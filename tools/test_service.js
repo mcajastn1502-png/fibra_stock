@@ -1,0 +1,65 @@
+const fs = require('fs'), vm = require('vm'), path = require('path');
+const ctx = { console, JSON, Date, Math }; vm.createContext(ctx);
+for (const f of ['../backend/00_Config.gs', '../backend/01_Engine.gs', '../backend/02_Service.gs', '../frontend/js/memstore.js'])
+  vm.runInContext(fs.readFileSync(path.join(__dirname, f), 'utf8'), ctx);
+const FS = ctx.FS;
+const t0 = Date.now();
+const store = FS.buildFromCSV(fs.readFileSync(path.join(__dirname, '../data/FIBRA_MATRIZ.csv'), 'utf8'), '2026-10-13', '2026-10-13 16:30:00');
+console.log('build ms', Date.now() - t0);
+const U = (rol, email) => new FS.Service(store, { email: email || rol.toLowerCase() + '@telconet.ec', nombre: rol, rol });
+const bod = U('BODEGA'), sup = U('SUPERVISOR'), ana = U('ANALISTA'), con = U('CONSULTA'), adm = U('ADMIN');
+let pass = 0, failn = 0;
+function ok(name, fn) { try { const r = fn(); console.log('✓', name, r !== undefined ? JSON.stringify(r).slice(0, 160) : ''); pass++; return r; } catch (e) { console.log('✗', name, e.message); failn++; } }
+function err(name, fn, re) { try { fn(); console.log('✗ (debía fallar)', name); failn++; } catch (e) { if (re && !re.test(e.message)) { console.log('✗', name, 'mensaje inesperado:', e.message); failn++; } else { console.log('✓', name, '→', e.message.slice(0, 140)); pass++; } } }
+
+const disp = store.all('SERIES').filter(s => s.estado_actual === 'DISPONIBLE' && s.estado_saldo === 'COMPLETO' && s.saldo_actual > 1500);
+const S = disp[0]; console.log('serie de prueba', S.id_serie, S.saldo_actual, S.bodega_actual, S.codigo);
+const base = { serie: S.id_serie, fecha: '2026-10-13', bodega: S.bodega_actual, departamento: 'PLANTA EXTERNA', contratista: 'QRTELECOM', proyecto: 'RUTA PRUEBA F01' };
+
+err('consulta no registra', () => con.registerMovement({ ...base, tipo: 'DESPACHO', metraje: 100, documento: 'D1' }), /Permiso/);
+err('despacho sin documento', () => bod.registerMovement({ ...base, tipo: 'DESPACHO', metraje: 100 }), /documento/);
+err('despacho a STOCK BODEGA', () => bod.registerMovement({ ...base, tipo: 'DESPACHO', metraje: 100, documento: 'D1', proyecto: 'STOCK BODEGA' }), /STOCK/);
+err('despacho mayor al saldo', () => bod.registerMovement({ ...base, tipo: 'DESPACHO', metraje: S.saldo_actual + 50, documento: 'D1' }), /saldo negativo/);
+err('metraje ambiguo', () => bod.registerMovement({ ...base, tipo: 'DESPACHO', metraje: '1.200', documento: 'D1' }), /ambiguo/);
+err('fecha futura', () => bod.registerMovement({ ...base, tipo: 'DESPACHO', metraje: 100, documento: 'D1', fecha: '2026-12-01' }), /posterior/);
+const d1 = ok('despacho 1000 m', () => bod.registerMovement({ ...base, tipo: 'DESPACHO', metraje: 1000, documento: 'DOC-900001' }));
+console.log('   contratista normalizado:', store.all('MOVIMIENTOS').find(m => m.id_movimiento === d1.movimientos[0]).contratista);
+err('despacho duplicado mismo doc', () => bod.registerMovement({ ...base, tipo: 'DESPACHO', metraje: 1000, documento: 'DOC-900001' }), /Ya existe/);
+const desp = bod.dispatchesOf({ serie: S.id_serie }).find(c => c.documento === 'DOC-900001');
+err('devolución mayor al despacho', () => bod.registerReturn({ serie: S.id_serie, id_despacho: desp.id_movimiento, metraje: 1200, bodega: S.bodega_actual, motivo: 'sobra' }), /supera/);
+ok('devolución parcial 376 m', () => bod.registerReturn({ serie: S.id_serie, id_despacho: desp.id_movimiento, metraje: 376, bodega: S.bodega_actual, motivo: 'Fin de obra', fecha: '2026-10-13' }).resumen);
+ok('devolución sin referencia', () => bod.registerReturn({ serie: S.id_serie, id_despacho: 'SIN_REFERENCIA', metraje: 10, bodega: S.bodega_actual, motivo: 'encontrado' }).resumen);
+err('préstamo sin fecha límite', () => bod.registerLoan({ ...base, metraje: 200, responsable: 'JUAN PEREZ' }), /fecha límite/);
+const pr = ok('préstamo 200 m', () => bod.registerLoan({ ...base, metraje: 200, responsable: 'Juan Perez', fecha_limite: '2026-10-15' }));
+ok('devolver préstamo 150 m (parcial)', () => bod.returnLoan({ id_prestamo: pr.prestamo, metraje: 150, fecha: '2026-10-13' }).serie.saldo_actual);
+console.log('   préstamo:', JSON.stringify(bod.loans().find(p => p.id_prestamo === pr.prestamo)));
+const sob = ok('declarar sobrante 300 m', () => bod.registerSurplus({ serie: S.id_serie, id_despacho: desp.id_movimiento, metraje_sobrante: 300 }));
+const saldoAntes = store.all('SERIES').find(s => s.id_serie === S.id_serie).saldo_actual;
+ok('confirmar recepción sobrante 300 (condición BUENA)', () => { const r = bod.confirmSurplus({ id_sobrante: sob.sobrante.id_sobrante, metraje_devuelto: 300, condicion: 'BUENA', bodega: S.bodega_actual }); return [saldoAntes, r.serie.saldo_actual]; });
+const otra = FS.BODEGAS.find(b => b !== S.bodega_actual);
+err('traslado sin documento', () => bod.transfer({ serie: S.id_serie, bodega_destino: otra }), /documento/);
+ok('traslado a ' + otra, () => bod.transfer({ serie: S.id_serie, bodega_destino: otra, documento: 'TR-1' }).serie.bodega_actual);
+err('despacho desde bodega anterior', () => bod.registerMovement({ ...base, tipo: 'DESPACHO', metraje: 10, documento: 'D2' }), /está en/);
+ok('corte 100 m', () => bod.cut({ serie: S.id_serie, metraje: 100 }).movimientos);
+const der = store.all('SERIES').filter(s => s.id_serie.startsWith(S.id_serie + '-1-'));
+console.log('   derivada', der.map(s => s.id_serie + ' ' + s.saldo_actual + ' madre=' + s.serie_madre));
+const baja = ok('solicitar baja 50 m (queda pendiente)', () => bod.registerMovement({ serie: S.id_serie, tipo: 'BAJA_POR_MAL_ESTADO', metraje: 50, bodega: otra, observacion: 'Chaqueta rota' }));
+err('bodega no aprueba', () => bod.approve({ id_movimiento: baja.movimientos[0], decision: 'APROBAR' }), /Permiso/);
+ok('supervisor aprueba baja', () => sup.approve({ id_movimiento: baja.movimientos[0], decision: 'APROBAR' }));
+const life = bod.rollLife({ serie: S.id_serie });
+console.log('   vida:', life.timeline.map(m => m.tipo + ':' + m.metraje + '→' + m.saldo_despues).join(' | '));
+console.log('   serie:', JSON.stringify(life.serie));
+const crit = store.all('ALERTAS').find(a => a.categoria === 'CRITICA' && a.estado === 'ABIERTA' && a.tipo === 'SALIDA_MAYOR_INGRESO');
+err('analista no cierra', () => ana.updateAlert({ id_alerta: crit.id_alerta, estado: 'RESUELTA', comentario: 'x' }), /no cerrarlas/);
+ok('analista pone EN_REVISION', () => ana.updateAlert({ id_alerta: crit.id_alerta, estado: 'EN_REVISION', comentario: 'Verificando guía' }));
+ok('supervisor resuelve crítica', () => sup.updateAlert({ id_alerta: crit.id_alerta, estado: 'RESUELTA', comentario: 'Guía física confirma salida; se registrará ajuste' }));
+ok('vincular familia', () => ana.linkFamily({ serie: 'B250459-1-001', serie_madre: 'B250459' }));
+console.log('   madre de B250459-1-001:', store.all('SERIES').find(s => s.id_serie === 'B250459-1-001').serie_madre);
+ok('reporte inventario', () => adm.report({ tipo: 'inventario' }).secciones.map(s => s.titulo + ':' + s.filas.length));
+ok('reporte consumo', () => adm.report({ tipo: 'consumo' }).secciones.map(s => s.titulo.slice(0, 20) + ':' + s.filas.length));
+ok('reporte excepciones', () => adm.report({ tipo: 'excepciones' }).secciones.map(s => s.titulo.slice(0, 18) + ':' + s.filas.length));
+ok('reporte no utilizable', () => adm.report({ tipo: 'no_utilizable' }).secciones[0].filas.length);
+ok('bitácora', () => adm.audit({}).length);
+ok('búsqueda por documento', () => bod.searchSeries({ q: '518855605' }).map(s => s.id_serie));
+ok('anular (admin)', () => adm.annulMovement({ id_movimiento: d1.movimientos[0], motivo: 'prueba' }));
+console.log(`\n${pass} correctas, ${failn} fallidas`);

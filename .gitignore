@@ -1,0 +1,7 @@
+data/
+*.csv
+*.xlsx
+tools/last_store.json
+.clasp.json
+graphify-out/
+.claude/

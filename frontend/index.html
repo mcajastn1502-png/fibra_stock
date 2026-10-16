@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fibra Stock · Inventario de fibra óptica</title>
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%230f1c29'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%233fc1c9' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%233fc1c9'/%3E%3C/svg%3E">
+</head>
+<body>
+  <div id="app"><div class="loading">Cargando…</div></div>
+  <div id="toast"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="js/config.js"></script>
+  <!-- Núcleo compartido con Apps Script: solo se usa en modo demo (sin API_URL) -->
+  <script src="js/core/00_Config.js"></script>
+  <script src="js/core/01_Engine.js"></script>
+  <script src="js/core/02_Service.js"></script>
+  <script src="js/memstore.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
