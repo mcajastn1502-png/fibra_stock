@@ -169,7 +169,8 @@ FS.Service = function (store, user) {
       responsable: U.key(p.responsable), documento: U.str(p.documento).trim(), documento_ref: U.str(p.documento_ref).trim(),
       usuario: user.email, creado_en: now, observacion_original: U.str(p.observacion), observacion_normalizada: U.key(p.observacion),
       evidencia_url: U.str(p.evidencia_url), origen: 'APP', fila_origen: '', regla_aplicada: 'REGISTRO_MANUAL', confianza: 'ALTA',
-      estado_registro: 'CERRADO', aprobacion: 'NO_REQUIERE', aprobado_por: '', id_vinculado: U.str(p.id_vinculado), _con: con
+      estado_registro: 'CERRADO', aprobacion: 'NO_REQUIERE', aprobado_por: '', id_vinculado: U.str(p.id_vinculado),
+      certificado_por: U.str(p.certificado_por).trim(), _con: con
     };
   }
   function save(movs, accion) {

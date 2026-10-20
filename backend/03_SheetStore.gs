@@ -27,6 +27,9 @@ FS.SheetStore = function () {
   function load(t) {
     if (cache[t]) return cache[t];
     var sh = sheet(t), vals = sh.getDataRange().getValues(), head = vals.shift() || [];
+    // Columnas nuevas del esquema que la hoja aún no tiene: se agregan al final del encabezado.
+    var faltan = (FS.SCHEMA[t] || []).filter(function (h) { return head.indexOf(h) < 0; });
+    if (faltan.length) { sh.getRange(1, head.length + 1, 1, faltan.length).setValues([faltan]).setFontWeight('bold'); head = head.concat(faltan); }
     var rows = vals.filter(function (r) { return r.join('') !== ''; }).map(function (r, i) {
       var o = {}; head.forEach(function (h, j) { if (h) o[h] = cell(r[j]); }); o.__row = i + 2; return o;
     });

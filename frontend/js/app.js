@@ -219,6 +219,17 @@
     var a = arts.filter(function (x) { return String(x.codigo).toUpperCase() === k; })[0] || arts.filter(function (x) { return String(x.familia).toUpperCase() === k; })[0];
     return a ? a.descripcion || '' : '';
   }
+  /** Código de artículo + Descripción (solo lectura, sale del catálogo). Editable solo para series nuevas; si no, el código es el de la serie. */
+  function codigoFields(editable, codigo) {
+    return field('codigo', 'Código de artículo', 'text', editable ? { list: 'dl-art', req: 1, value: codigo } : { value: codigo || '', ph: 'Consulte la serie' }) +
+      field('descripcion_art', 'Descripción', 'text', { value: artDesc(codigo), wide: 1 });
+  }
+  function bindCodigoFields(root, editable) {
+    var cod = root.querySelector('[name=codigo]'), desc = root.querySelector('[name=descripcion_art]'); if (!cod || !desc) return;
+    desc.readOnly = true; cod.readOnly = !editable;
+    var sync = function () { desc.value = artDesc(cod.value); };
+    cod.addEventListener('input', sync); cod.addEventListener('change', sync); sync();
+  }
   /** Al elegir un código, llena Descripción. Ese texto es informativo: no se envía como filtro mientras el usuario no lo edite. */
   function bindCodigoDesc(form) {
     var cod = form.querySelector('[name=codigo]'), desc = form.querySelector('[name=descripcion]');
@@ -392,7 +403,7 @@
           (t.delta ? '<span class="delta ' + (t.delta > 0 ? 'pos' : 'negv') + '">' + (t.delta > 0 ? '+' : '') + fmt(t.delta) + ' m</span>' : (+t.metraje ? '<span class="delta">' + m(t.metraje) + '</span>' : '')) +
           ' → saldo <b class="num' + (t.saldo_despues < 0 ? ' neg' : '') + '">' + m(t.saldo_despues) + '</b> ' + pill(t.estado_resultante) + (t.aprobacion === 'PENDIENTE' ? ' ' + pill('PENDIENTE') : '') + (t.estado_registro === 'ANULADO' ? ' ' + pill('ANULADO') : '') + '</div>' +
           '<div class="meta">' + [t.bodega_origen && t.bodega_destino ? t.bodega_origen + ' → ' + t.bodega_destino : (t.bodega_destino || t.bodega_origen), t.proyecto_ruta, t.departamento, t.contratista, t.responsable && 'Resp. ' + t.responsable,
-            t.documento && 'Doc. ' + t.documento, t.documento_ref && 'Ref. ' + t.documento_ref].filter(Boolean).map(esc).join(' · ') + '</div>' +
+            t.documento && 'Doc. ' + t.documento, t.documento_ref && 'Ref. ' + t.documento_ref, t.certificado_por && 'Certificado por ' + t.certificado_por].filter(Boolean).map(esc).join(' · ') + '</div>' +
           '<div class="meta hint">' + esc(t.id_movimiento) + ' · ' + esc(t.origen) + (t.fila_origen ? ' fila ' + esc(t.fila_origen) : '') + ' · regla ' + esc(t.regla_aplicada) + ' · confianza ' + esc(t.confianza) + ' · ' + esc(t.usuario) + (t.observacion_original ? '<br>Obs: ' + esc(t.observacion_original) : '') + '</div></li>';
       }).join('') + '</ul></div>' +
       '<div><div class="card"><h3>Consumo por despacho<small>despachado − devoluciones vinculadas</small></h3><div id="cons"></div></div>' +
@@ -451,13 +462,17 @@
       var met = field('metraje', 'Metraje (m)', 'number', { req: 1, hint: 'Solo números, sin separador de miles.' });
       var h = '';
       if (t === 'DESPACHO') h = met + bod + common + field('documento', 'N° documento de despacho', 'text', { req: 1 }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep', req: 1 }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) + field('proyecto', 'Ruta / proyecto', 'text', { req: 1, wide: 1 }) + field('responsable', 'Responsable que retira', 'text') + field('justificacion', 'Justificación (solo si repite documento y metraje)', 'text', { wide: 1 }) + obs;
-      else if (t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA') h = field('codigo', 'Código de artículo', 'text', { list: 'dl-art', req: 1 }) + met + bod + field('ubicacion', 'Ubicación', 'select', { options: c.ubicaciones, empty: '—' }) + field('estado', 'Estado inicial', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + common + field('documento', 'Documento de ingreso', 'text') + obs;
+      else if (t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA') h = codigoFields(true) + met + bod + field('ubicacion', 'Ubicación', 'select', { options: c.ubicaciones, empty: '—' }) + field('estado', 'Estado inicial', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + common + field('documento', 'Documento de ingreso', 'text') +
+        (t === 'INVENTARIO_INICIAL_DE_APERTURA' ? field('certificado_por', 'Certificado por', 'text') : '') + obs;
       else if (t === 'INGRESO_ADICIONAL') h = met + bod + common + field('documento', 'Documento', 'text') + obs;
       else if (t === 'CAMBIO_DE_ESTADO') h = field('estado', 'Nuevo estado', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO', 'EN_CONCILIACION'], req: 1 }) + field('proyecto', 'Proyecto (si reserva)', 'text', { wide: 1 }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep' }) + common + obs;
       else if (t === 'CORTE_O_FRACCIONAMIENTO') h = met + field('serie_derivada', 'Serie derivada', 'text', { hint: 'Vacío = se genera SERIE-1-001, -002…' }) + common + obs;
       else if (t === 'BAJA_POR_MAL_ESTADO') h = met + bod + common + field('documento', 'Acta / informe', 'text') + obs;
       else if (t === 'AJUSTE_MANUAL_AUTORIZADO') h = field('metraje', 'Ajuste (m)', 'number', { req: 1, hint: 'Positivo suma, negativo resta. Requiere aprobación.' }) + common + field('documento', 'Documento de respaldo', 'text', { req: 1 }) + obs;
+      var nueva = t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA';
+      if (!nueva) h = codigoFields(false, cur && cur.codigo) + h;
       dyn.innerHTML = h;
+      bindCodigoFields(dyn, nueva);
       var j = dyn.querySelector('[name=justificacion]'); if (j) j.closest('.f').hidden = true; // solo se muestra si el servidor la pide (documento y metraje repetidos)
     }
     sel.onchange = draw; draw();
@@ -477,12 +492,15 @@
     var c = BOOT.catalogos;
     v.innerHTML = '<div class="card"><h3>Registrar devolución</h3><div class="note">Seleccione el despacho original. La diferencia entre lo despachado y lo devuelto se considera <b>consumo efectivo</b> del proyecto. Una devolución mayor a lo despachado se rechaza y genera alerta crítica.</div>' +
       '<form id="df"><div class="form-grid"><div id="sp" class="full"></div><div class="f full"><label>Despacho original <span class="req">*</span></label><select name="id_despacho" id="desp"><option value="">— consulte la serie —</option></select><span class="hint" id="dinfo"></span></div>' +
+      codigoFields(false) + field('certificado_por', 'Certificado por', 'text') +
       field('metraje', 'Metraje devuelto (m)', 'number', { req: 1 }) + field('fecha', 'Fecha de devolución', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
       field('bodega', 'Bodega receptora', 'select', { options: c.bodegas, req: 1 }) + field('estado_material', 'Estado del material', 'select', { options: ['DISPONIBLE', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) +
       field('motivo', 'Motivo de devolución', 'text', { req: 1, wide: 1 }) + field('documento', 'Documento de devolución', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) +
       '<div class="full note" id="calc" hidden></div></div><div class="actions"><button class="btn pri" type="submit">Registrar devolución</button></div></form></div>';
-    var desp = v.querySelector('#desp'), list = [], calc = v.querySelector('#calc'), met = v.querySelector('input[name=metraje]');
+    var desp = v.querySelector('#desp'), list = [], calc = v.querySelector('#calc'), met = v.querySelector('input[name=metraje]'), cod = v.querySelector('input[name=codigo]');
+    bindCodigoFields(v, false);
     seriePicker(v.querySelector('#sp'), function (s) {
+      cod.value = s ? s.codigo : ''; cod.dispatchEvent(new Event('change'));
       if (!s) { desp.innerHTML = '<option value="">— serie no válida —</option>'; return; }
       v.querySelector('select[name=bodega]').value = s.bodega_actual || '';
       api('dispatchesOf', { serie: s.id_serie }).then(function (r) {

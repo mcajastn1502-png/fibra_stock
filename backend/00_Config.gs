@@ -31,7 +31,7 @@ FS.SCHEMA = {
     'bodega_origen', 'bodega_destino', 'ubicacion', 'estado_resultante', 'proyecto_ruta', 'departamento_original',
     'departamento', 'contratista_original', 'contratista', 'responsable', 'documento', 'documento_ref', 'usuario',
     'creado_en', 'observacion_original', 'observacion_normalizada', 'evidencia_url', 'origen', 'fila_origen',
-    'regla_aplicada', 'confianza', 'estado_registro', 'aprobacion', 'aprobado_por', 'id_vinculado'],
+    'regla_aplicada', 'confianza', 'estado_registro', 'aprobacion', 'aprobado_por', 'id_vinculado', 'certificado_por'],
   PRESTAMOS: ['id_prestamo', 'id_serie', 'serie', 'codigo', 'metraje_prestado', 'responsable', 'contratista',
     'departamento', 'proyecto', 'fecha_prestamo', 'fecha_limite', 'fecha_devolucion', 'metraje_devuelto', 'diferencia',
     'estado', 'estado_manual', 'documento', 'observaciones', 'id_mov_prestamo', 'id_mov_devolucion', 'origen'],
