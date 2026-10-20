@@ -387,6 +387,8 @@
   var TIPO_LBL = { INGRESO_INICIAL: 'Ingreso inicial', INGRESO_ADICIONAL: 'Ingreso adicional', INVENTARIO_INICIAL_DE_APERTURA: 'Inventario de apertura', DESPACHO: 'Despacho', DEVOLUCION: 'Devolución',
     PRESTAMO: 'Préstamo', DEVOLUCION_DE_PRESTAMO: 'Devolución de préstamo', TRASLADO_ENTRE_BODEGAS: 'Traslado', CORTE_O_FRACCIONAMIENTO: 'Corte / fraccionamiento', SOBRANTE_DE_OBRA: 'Sobrante de obra',
     BAJA_POR_MAL_ESTADO: 'Baja por mal estado', AJUSTE_MANUAL_AUTORIZADO: 'Ajuste autorizado', CAMBIO_DE_ESTADO: 'Cambio de estado / registro posterior' };
+  /** En la app, CAMBIO_DE_ESTADO se presenta como "Reservar"; los importados de la matriz conservan su nombre original. */
+  function tipoLbl(t) { return t.tipo === 'CAMBIO_DE_ESTADO' && t.origen === 'APP' ? 'Reservar' : TIPO_LBL[t.tipo] || t.tipo; }
   SCREENS.vida = async function (v, serie) {
     v.innerHTML = '<div class="card"><form id="sf" class="row"><input name="q" value="' + esc(serie || '') + '" placeholder="Serie del rollo (o busque por documento/proyecto en Buscar serie)" style="flex:1;min-width:220px"><button class="btn pri">Ver historial fibra</button></form></div><div id="life"></div>';
     v.querySelector('#sf').onsubmit = function (e) { e.preventDefault(); var q = formData(e.target).q; if (q) location.hash = '#vida/' + encodeURIComponent(q.toUpperCase().replace(/\s+/g, '')); };
@@ -404,7 +406,7 @@
       '<div class="grid g2"><div class="card"><h3>Historial cronológico<small>saldo acumulado después de cada movimiento</small></h3><ul class="timeline">' +
       L.timeline.map(function (t) {
         var cls = !t.vigente ? 'void' : t.delta < 0 ? 'out' : t.delta === 0 ? 'zero' : '';
-        return '<li class="' + cls + '"><div><span class="d">' + esc(t.fecha) + '</span><span class="t">' + esc(TIPO_LBL[t.tipo] || t.tipo) + '</span> ' +
+        return '<li class="' + cls + '"><div><span class="d">' + esc(t.fecha) + '</span><span class="t">' + esc(tipoLbl(t)) + '</span> ' +
           (t.delta ? '<span class="delta ' + (t.delta > 0 ? 'pos' : 'negv') + '">' + (t.delta > 0 ? '+' : '') + fmt(t.delta) + ' m</span>' : (+t.metraje ? '<span class="delta">' + m(t.metraje) + '</span>' : '')) +
           ' → saldo <b class="num' + (t.saldo_despues < 0 ? ' neg' : '') + '">' + m(t.saldo_despues) + '</b> ' + pill(t.estado_resultante) + (t.aprobacion === 'PENDIENTE' ? ' ' + pill('PENDIENTE') : '') + (t.estado_registro === 'ANULADO' ? ' ' + pill('ANULADO') : '') + '</div>' +
           '<div class="meta">' + [t.bodega_origen && t.bodega_destino ? t.bodega_origen + ' → ' + t.bodega_destino : (t.bodega_destino || t.bodega_origen), t.proyecto_ruta, t.departamento, t.contratista, t.responsable && 'Resp. ' + t.responsable,
@@ -453,9 +455,10 @@
     container.querySelector('#sp-go').onclick = go; inp.onchange = go; if (initial) go();
   }
   SCREENS.movimiento = async function (v, serie) {
-    var c = BOOT.catalogos, tipos = ['DESPACHO', 'INGRESO_INICIAL', 'INVENTARIO_INICIAL_DE_APERTURA', 'INGRESO_ADICIONAL', 'CAMBIO_DE_ESTADO', 'CORTE_O_FRACCIONAMIENTO', 'BAJA_POR_MAL_ESTADO', 'AJUSTE_MANUAL_AUTORIZADO'];
+    // Ingreso inicial, Ingreso adicional y Corte se retiraron del formulario; sus ramas en draw() se conservan para reactivarlos agregándolos aquí.
+    var c = BOOT.catalogos, tipos = ['DESPACHO', 'INVENTARIO_INICIAL_DE_APERTURA', 'CAMBIO_DE_ESTADO', 'BAJA_POR_MAL_ESTADO', 'AJUSTE_MANUAL_AUTORIZADO'];
     v.innerHTML = '<div class="card"><h3>Registrar movimiento</h3><div class="note">Devoluciones, préstamos y traslados tienen pantallas propias para relacionarlos con el despacho o préstamo original. Bajas y ajustes quedan <b>pendientes de aprobación</b> del supervisor.</div>' +
-      '<form id="mf"><div class="form-grid">' + field('tipo', 'Tipo de movimiento', 'select', { options: tipos.map(function (t) { return { v: t, l: TIPO_LBL[t] }; }), value: 'DESPACHO', empty: undefined, req: 1 }) + '<div id="sp" class="full"></div><div id="dyn" class="full form-grid"></div></div>' +
+      '<form id="mf"><div class="form-grid">' + field('tipo', 'Tipo de movimiento', 'select', { options: tipos.map(function (t) { return { v: t, l: tipoLbl({ tipo: t, origen: 'APP' }) }; }), value: 'DESPACHO', empty: undefined, req: 1 }) + '<div id="sp" class="full"></div><div id="dyn" class="full form-grid"></div></div>' +
       '<div class="actions"><button class="btn pri" type="submit">Registrar</button></div></form>' + datalists() + '</div>';
     var sel = v.querySelector('select[name=tipo]'), dyn = v.querySelector('#dyn'), cur = null;
     seriePicker(v.querySelector('#sp'), function (s) { cur = s; draw(); }, serie);
@@ -470,7 +473,9 @@
       else if (t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA') h = codigoFields(true) + met + bod + field('ubicacion', 'Ubicación', 'select', { options: c.ubicaciones, empty: '—' }) + field('estado', 'Estado inicial', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + common + field('documento', 'Documento de ingreso', 'text') +
         (t === 'INVENTARIO_INICIAL_DE_APERTURA' ? field('certificado_por', 'Certificado por', 'text') : '') + obs;
       else if (t === 'INGRESO_ADICIONAL') h = met + bod + common + field('documento', 'Documento', 'text') + obs;
-      else if (t === 'CAMBIO_DE_ESTADO') h = field('estado', 'Nuevo estado', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO', 'EN_CONCILIACION'], req: 1 }) + field('proyecto', 'Proyecto (si reserva)', 'text', { wide: 1 }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep' }) + common + obs;
+      else if (t === 'CAMBIO_DE_ESTADO') h = field('estado', 'Nuevo estado', 'select', { options: ['RESERVADA', 'DISPONIBLE', 'MAL_ESTADO', 'EN_CONCILIACION'], value: 'RESERVADA', empty: undefined, req: 1, hint: 'DISPONIBLE libera la reserva.' }) +
+        field('proyecto', 'Proyecto / ruta', 'text', { wide: 1, hint: 'Obligatorio al reservar.' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep' }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) +
+        field('responsable', 'Solicitado por', 'text') + field('documento', 'N° de solicitud / documento', 'text') + common + obs;
       else if (t === 'CORTE_O_FRACCIONAMIENTO') h = met + field('serie_derivada', 'Serie derivada', 'text', { hint: 'Vacío = se genera SERIE-1-001, -002…' }) + common + obs;
       else if (t === 'BAJA_POR_MAL_ESTADO') h = met + bod + common + field('documento', 'Acta / informe', 'text') + obs;
       else if (t === 'AJUSTE_MANUAL_AUTORIZADO') h = field('metraje', 'Ajuste (m)', 'number', { req: 1, hint: 'Positivo suma, negativo resta. Requiere aprobación.' }) + common + field('documento', 'Documento de respaldo', 'text', { req: 1 }) + obs;
@@ -579,7 +584,7 @@
   /* ============================ 9. traslado ============================ */
   SCREENS.traslado = async function (v, serie) {
     var c = BOOT.catalogos;
-    v.innerHTML = '<div class="card"><h3>Trasladar entre bodegas</h3><div class="note">Se traslada el saldo completo de la serie. El saldo de la serie no cambia; cambia su bodega actual. Para mover solo una parte, registre primero un corte.</div><form id="tf"><div class="form-grid"><div id="sp" class="full"></div>' + codigoFields(false) +
+    v.innerHTML = '<div class="card"><h3>Trasladar entre bodegas</h3><div class="note">Se traslada el saldo completo de la serie. El saldo de la serie no cambia; cambia su bodega actual.</div><form id="tf"><div class="form-grid"><div id="sp" class="full"></div>' + codigoFields(false) +
       field('bodega_destino', 'Bodega destino', 'select', { options: c.bodegas, req: 1 }) + field('ubicacion', 'Ubicación destino', 'select', { options: c.ubicaciones, empty: '—' }) + field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
       field('documento', 'Documento de traslado', 'text', { req: 1 }) + field('responsable', 'Responsable del transporte', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) + '</div><div class="actions"><button class="btn pri" type="submit">Trasladar</button></div></form></div>';
     var tf = v.querySelector('#tf'); bindCodigoFields(tf, false);
