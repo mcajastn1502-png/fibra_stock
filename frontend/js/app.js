@@ -213,8 +213,28 @@
         field('contratista', 'Contratista', 'select', { options: c.contratistas, value: f.contratista, empty: 'Todos' }) + field('ruta', 'Ruta / proyecto', 'text', { value: f.ruta }) : '') +
       '<div class="row"><button class="btn pri" type="submit">Aplicar</button><button class="btn" type="button" id="clr">Limpiar</button></div></form>' + datalists() + '</div>';
   }
+  /** Descripción del artículo para un código exacto o, si es una familia, la del primer artículo de esa familia. */
+  function artDesc(codigo) {
+    var k = String(codigo || '').trim().toUpperCase(), arts = BOOT.catalogos.articulos || []; if (!k) return '';
+    var a = arts.filter(function (x) { return String(x.codigo).toUpperCase() === k; })[0] || arts.filter(function (x) { return String(x.familia).toUpperCase() === k; })[0];
+    return a ? a.descripcion || '' : '';
+  }
+  /** Al elegir un código, llena Descripción. Ese texto es informativo: no se envía como filtro mientras el usuario no lo edite. */
+  function bindCodigoDesc(form) {
+    var cod = form.querySelector('[name=codigo]'), desc = form.querySelector('[name=descripcion]');
+    if (!cod || !desc) return;
+    var sync = function () { if (desc.value && !desc.dataset.auto) return; var d = artDesc(cod.value); desc.value = d; if (d) desc.dataset.auto = d; else delete desc.dataset.auto; };
+    cod.addEventListener('input', sync); cod.addEventListener('change', sync);
+    desc.addEventListener('input', function () { delete desc.dataset.auto; });
+    sync();
+  }
   function bindFilters(v, f, cb) {
-    v.querySelector('#flt').onsubmit = function (e) { e.preventDefault(); var d = formData(e.target); Object.keys(f).forEach(function (k) { delete f[k]; }); Object.keys(d).forEach(function (k) { if (d[k]) f[k] = d[k]; }); cb(); };
+    var form = v.querySelector('#flt'); bindCodigoDesc(form);
+    form.onsubmit = function (e) {
+      e.preventDefault(); var d = formData(e.target), desc = e.target.querySelector('[name=descripcion]');
+      if (desc && desc.dataset.auto && d.descripcion === desc.dataset.auto) delete d.descripcion;
+      Object.keys(f).forEach(function (k) { delete f[k]; }); Object.keys(d).forEach(function (k) { if (d[k]) f[k] = d[k]; }); cb();
+    };
     v.querySelector('#clr').onclick = function () { Object.keys(f).forEach(function (k) { delete f[k]; }); cb(); };
   }
   function chart(id, type, labels, datasets, o) {
@@ -575,8 +595,8 @@
     var r = await api('report', { tipo: repState.tipo, filtros: repState.f });
     v.innerHTML = '<div class="card"><div class="tabs">' + Object.keys(REP).map(function (k) { return '<button data-t="' + k + '" class="' + (k === repState.tipo ? 'on' : '') + '">' + REP[k] + '</button>'; }).join('') + '</div>' +
       '<form class="filters" id="flt">' + (repState.tipo === 'consumo' ? field('desde', 'Desde', 'date', { value: repState.f.desde }) + field('hasta', 'Hasta', 'date', { value: repState.f.hasta }) : '') +
-      field('bodega', 'Bodega', 'select', { options: BOOT.catalogos.bodegas, value: repState.f.bodega, empty: 'Todas' }) + field('hilos', 'Hilos', 'select', { options: BOOT.catalogos.hilos, value: repState.f.hilos, empty: 'Todos' }) + field('codigo', 'Código', 'text', { value: repState.f.codigo }) +
-      '<div class="row"><button class="btn pri" type="submit">Aplicar</button><button class="btn" type="button" id="clr">Limpiar</button></div></form>' +
+      field('bodega', 'Bodega', 'select', { options: BOOT.catalogos.bodegas, value: repState.f.bodega, empty: 'Todas' }) + field('hilos', 'Hilos', 'select', { options: BOOT.catalogos.hilos, value: repState.f.hilos, empty: 'Todos' }) + field('codigo', 'Código / familia', 'text', { value: repState.f.codigo, list: 'dl-art' }) + field('descripcion', 'Descripción', 'text', { value: repState.f.descripcion }) +
+      '<div class="row"><button class="btn pri" type="submit">Aplicar</button><button class="btn" type="button" id="clr">Limpiar</button></div></form>' + datalists() +
       '<div class="actions"><button class="btn" id="xl">Exportar Excel</button><button class="btn" id="pdf">PDF / imprimir</button>' + (Api.demo ? '' : '<button class="btn" id="gs">Crear en Google Sheets</button>') + '</div></div>' +
       r.secciones.map(function (s, i) { return '<div class="card"><h3>' + esc(s.titulo) + '<small>' + s.filas.length + ' filas</small></h3><div id="rs' + i + '"></div></div>'; }).join('');
     v.querySelectorAll('.tabs button').forEach(function (b) { b.onclick = function () { repState.tipo = b.dataset.t; route_(); }; });
