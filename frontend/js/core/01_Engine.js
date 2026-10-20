@@ -696,13 +696,17 @@ FS.dashboard = function (data, f, today, params) {
   var series = FS.applySeriesFilters(data.series || [], f), ids = {};
   series.forEach(function (s) { ids[s.id_serie] = s; });
   var desde = f.desde || '0000-00-00', hasta = f.hasta || '9999-99-99';
+  // Filtros de destino (departamento, contratista, ruta): aplican a todo lo que tiene destino (movimientos, préstamos, reservas).
+  var destinoOk = function (dep, con, ruta) {
+    if (f.departamento && dep !== f.departamento) return false;
+    if (f.contratista && con !== f.contratista) return false;
+    if (f.ruta && U.key(ruta).indexOf(U.key(f.ruta)) < 0) return false;
+    return true;
+  };
   var movs = (data.movimientos || []).filter(function (m) {
     if (!ids[m.id_serie] || !FS.isMovVigente(m)) return false;
     if (m.fecha < desde || m.fecha > hasta) return false;
-    if (f.departamento && m.departamento !== f.departamento) return false;
-    if (f.contratista && m.contratista !== f.contratista) return false;
-    if (f.ruta && U.key(m.proyecto_ruta).indexOf(U.key(f.ruta)) < 0) return false;
-    return true;
+    return destinoOk(m.departamento, m.contratista, m.proyecto_ruta);
   });
   var movIds = {}; movs.forEach(function (m) { movIds[m.id_movimiento] = 1; });
   var cons = FS.consumptionLines(data.movimientos || []).filter(function (c) { return movIds[c.id_movimiento]; });
@@ -717,13 +721,12 @@ FS.dashboard = function (data, f, today, params) {
     return Object.keys(keys).map(function (k) { return { k: k, v: U.round(a[k] || 0, 1), p: U.round(b[k] || 0, 1) }; })
       .sort(function (x, y) { return (y.v + y.p) - (x.v + x.p); }).slice(0, n || 9999);
   };
-  var loans = (data.prestamos || []).filter(function (p) { return ids[p.id_serie]; });
+  var loans = (data.prestamos || []).filter(function (p) { return ids[p.id_serie] && destinoOk(p.departamento, p.contratista, p.proyecto); });
   var umbral = +params.UMBRAL_SALDO_BAJO_M || 300;
   var despachos = movs.filter(function (m) { return m.tipo === 'DESPACHO'; });
   var devoluciones = movs.filter(function (m) { return ['DEVOLUCION', 'DEVOLUCION_DE_PRESTAMO', 'SOBRANTE_DE_OBRA'].indexOf(m.tipo) >= 0; });
   var prestamosPendientes = loans.filter(function (p) { return ['ACTIVO', 'VENCIDO', 'PENDIENTE_DE_CONCILIACION', 'DEVUELTO_PARCIAL'].indexOf(p.estado) >= 0; });
   var malEstado = series.filter(function (s) { return s.estado_actual === 'MAL_ESTADO'; });
-  var reservadas = series.filter(function (s) { return s.estado_actual === 'RESERVADA'; });
   var activos = series.filter(function (s) { return s.saldo_actual > 0; });
   var negativos = series.filter(function (s) { return s.saldo_actual < 0; });
   var porConciliar = series.filter(function (s) { return s.estado_conciliacion === 'PENDIENTE'; });
@@ -736,7 +739,11 @@ FS.dashboard = function (data, f, today, params) {
     var prev = reservaMovs[m.id_serie];
     if (!prev || m.fecha > prev.fecha || (m.fecha === prev.fecha && m.id_movimiento > prev.id_movimiento)) reservaMovs[m.id_serie] = m;
   });
-  var reservas = series.filter(function (s) { return s.estado_actual === 'RESERVADA' && s.saldo_actual > 0; }).map(function (s) {
+  var reservadasDestino = series.filter(function (s) {
+    var m = reservaMovs[s.id_serie] || {};
+    return s.estado_actual === 'RESERVADA' && destinoOk(m.departamento, m.contratista, m.proyecto_ruta);
+  });
+  var reservas = reservadasDestino.filter(function (s) { return s.saldo_actual > 0; }).map(function (s) {
     var m = reservaMovs[s.id_serie] || {};
     return { departamento: m.departamento || '', codigo: s.codigo, descripcion: s.descripcion, serie: s.id_serie,
       cantidad: s.saldo_actual, ruta: m.proyecto_ruta || '' };
@@ -748,7 +755,7 @@ FS.dashboard = function (data, f, today, params) {
     metros_devueltos: sum(devoluciones, function (m) { return U.num(m.metraje); }),
     metros_prestados: sum(prestamosPendientes, function (p) { return U.num(p.metraje_prestado) - U.num(p.metraje_devuelto); }),
     metros_mal_estado: sum(malEstado, pos),
-    metros_reservados: sum(reservadas, pos),
+    metros_reservados: sum(reservadasDestino, pos),
     metros_en_conciliacion: sum(series.filter(function (s) { return s.estado_saldo === 'PENDIENTE_CONCILIACION' && s.saldo_actual > 0; }), pos),
     rollos_activos: activos.length,
     series_saldo_negativo: negativos.length,
