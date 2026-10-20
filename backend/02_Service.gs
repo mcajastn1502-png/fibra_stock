@@ -81,6 +81,10 @@ FS.Service = function (store, user) {
     if (f.texto) { var k = U.key(f.texto); s = s.filter(function (x) { return U.key([x.id_serie, x.codigo, x.descripcion, x.reservado_para].join(' ')).indexOf(k) >= 0; }); }
     if (f.estado_saldo) s = s.filter(function (x) { return x.estado_saldo === f.estado_saldo; });
     if (f.solo_con_saldo) s = s.filter(function (x) { return +x.saldo_actual !== 0; });
+    if (s.some(function (x) { return x.estado_actual === 'RESERVADA'; })) {
+      var ult = FS.ultimoMovEstado(store.all('MOVIMIENTOS'));
+      s = s.map(function (x) { return x.estado_actual === 'RESERVADA' ? Object.assign({}, x, { reservado_departamento: (ult[x.id_serie] || {}).departamento || '' }) : x; });
+    }
     return { total: s.length, filas: FS.disponiblesPrimero(s) };
   };
   self.searchSeries = function (p) { need('leer'); return FS.searchSeries(data(), p.q); };

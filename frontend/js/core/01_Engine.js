@@ -691,6 +691,17 @@ FS.disponiblesPrimero = function (rows, campo) {
   return rows.filter(disp).concat(rows.filter(function (r) { return !disp(r); }));
 };
 
+/** Por serie, el último movimiento vigente que fijó su estado (de él salen el departamento y la ruta de una reserva). */
+FS.ultimoMovEstado = function (movs) {
+  var out = {};
+  movs.filter(FS.isMovVigente).forEach(function (m) {
+    if (!m.estado_resultante) return;
+    var prev = out[m.id_serie];
+    if (!prev || m.fecha > prev.fecha || (m.fecha === prev.fecha && m.id_movimiento > prev.id_movimiento)) out[m.id_serie] = m;
+  });
+  return out;
+};
+
 FS.dashboard = function (data, f, today, params) {
   var U = FS.util; f = f || {};
   var series = FS.applySeriesFilters(data.series || [], f), ids = {};
@@ -733,12 +744,7 @@ FS.dashboard = function (data, f, today, params) {
   var vencidos = loans.filter(function (p) { return p.estado === 'VENCIDO'; });
   var sinFecha = loans.filter(function (p) { return p.estado === 'PENDIENTE_DE_CONCILIACION'; });
   var saldoBajo = disp.filter(function (s) { return s.saldo_actual < umbral; });
-  var reservaMovs = {};
-  (data.movimientos || []).filter(FS.isMovVigente).forEach(function (m) {
-    if (!m.estado_resultante) return;
-    var prev = reservaMovs[m.id_serie];
-    if (!prev || m.fecha > prev.fecha || (m.fecha === prev.fecha && m.id_movimiento > prev.id_movimiento)) reservaMovs[m.id_serie] = m;
-  });
+  var reservaMovs = FS.ultimoMovEstado(data.movimientos || []);
   var reservadasDestino = series.filter(function (s) {
     var m = reservaMovs[s.id_serie] || {};
     return s.estado_actual === 'RESERVADA' && destinoOk(m.departamento, m.contratista, m.proyecto_ruta);

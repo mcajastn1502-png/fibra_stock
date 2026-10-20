@@ -430,7 +430,7 @@
       api('inventory', { filtros: { texto: q } }).then(function (r) {
         var s = r.filas.filter(function (x) { return x.id_serie === q.toUpperCase().replace(/\s+/g, ''); })[0];
         if (!s) { info.innerHTML = 'Serie no registrada.' + (r.filas.length ? ' Coincidencias: ' + r.filas.slice(0, 5).map(function (x) { return '<a href="#" data-s="' + esc(x.id_serie) + '">' + esc(x.id_serie) + '</a>'; }).join(', ') : ''); info.querySelectorAll('a[data-s]').forEach(function (a) { a.onclick = function (e) { e.preventDefault(); inp.value = a.dataset.s; go(); }; }); onPick(null); return; }
-        info.innerHTML = 'Saldo <b class="num' + (s.saldo_actual < 0 ? ' neg' : '') + '">' + m(s.saldo_actual) + '</b> · ' + esc(s.bodega_actual) + ' · ' + pill(s.estado_actual) + ' ' + pill(s.estado_saldo) + ' · ' + esc(s.codigo) + ' ' + esc(s.hilos) + 'H';
+        info.innerHTML = 'Saldo <b class="num' + (s.saldo_actual < 0 ? ' neg' : '') + '">' + m(s.saldo_actual) + '</b> · ' + esc(s.bodega_actual) + ' · ' + pill(s.estado_actual) + ' ' + (s.reservado_departamento ? '<span class="pill">' + esc(s.reservado_departamento) + '</span> ' : '') + pill(s.estado_saldo) + ' · ' + esc(s.codigo) + ' ' + esc(s.hilos) + 'H';
         onPick(s);
       }).catch(function (e) { info.textContent = e.message; });
     };
