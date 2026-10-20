@@ -684,6 +684,13 @@ FS.applySeriesFilters = function (series, f) {
   });
 };
 
+/** Orden de toda consulta de stock: primero las filas en estado DISPONIBLE; el resto conserva su orden. */
+FS.disponiblesPrimero = function (rows, campo) {
+  campo = campo || 'estado_actual';
+  var disp = function (r) { return r[campo] === 'DISPONIBLE'; };
+  return rows.filter(disp).concat(rows.filter(function (r) { return !disp(r); }));
+};
+
 FS.dashboard = function (data, f, today, params) {
   var U = FS.util; f = f || {};
   var series = FS.applySeriesFilters(data.series || [], f), ids = {};
@@ -791,7 +798,7 @@ FS.dashboard = function (data, f, today, params) {
     stock_bodega: split(function (s) { return s.bodega_actual; }),
     stock_hilos: split(hilosBucket),
     stock_codigo: split(function (s) { return s.codigo; }, 15),
-    stock_estado: U.topN(U.groupSum(series.filter(function (s) { return s.saldo_actual !== 0; }), function (s) { return s.estado_actual; }, function (s) { return s.saldo_actual; })),
+    stock_estado: FS.disponiblesPrimero(U.topN(U.groupSum(series.filter(function (s) { return s.saldo_actual !== 0; }), function (s) { return s.estado_actual; }, function (s) { return s.saldo_actual; })), 'k'),
     tendencia: Object.keys(meses).sort().map(function (k) { return { mes: k, despachos: meses[k].despachos, devoluciones: meses[k].devoluciones, consumo: meses[k].consumo }; }),
     consumo_departamento: U.topN(U.groupSum(cons, function (c) { return c.departamento; }, function (c) { return c.consumo; }), 10),
     consumo_contratista: U.topN(U.groupSum(cons, function (c) { return c.contratista; }, function (c) { return c.consumo; }), 10),
@@ -831,7 +838,7 @@ FS.rollLife = function (data, serieId) {
     alertas: (data.alertas || []).filter(function (a) { return a.id_serie === serieId; }),
     prestamos: (data.prestamos || []).filter(function (p) { return p.id_serie === serieId; }),
     sobrantes: (data.sobrantes || []).filter(function (p) { return p.id_serie === serieId; }),
-    familia: (data.series || []).filter(function (x) { return x.id_serie !== serieId && (U.serieRaiz(x.id_serie) === famRoot || x.serie_madre === serieId || x.serie_madre === famRoot); })
+    familia: FS.disponiblesPrimero((data.series || []).filter(function (x) { return x.id_serie !== serieId && (U.serieRaiz(x.id_serie) === famRoot || x.serie_madre === serieId || x.serie_madre === famRoot); }))
       .map(function (x) { return { serie: x.id_serie, saldo: x.saldo_actual, estado: x.estado_actual, madre: x.serie_madre }; }),
     relaciones: (data.relaciones || []).filter(function (r) { return r.serie === serieId || r.serie_madre === serieId; }),
     origen_matriz: (data.staging || []).filter(function (r) { return r.serie_normalizada === serieId; })
@@ -846,9 +853,9 @@ FS.searchSeries = function (data, q) {
     var t = U.key([m.documento, m.documento_ref, m.proyecto_ruta, m.contratista, m.contratista_original, m.responsable].join(' '));
     if (t.indexOf(k) >= 0) bySerieMov[m.id_serie] = 1;
   });
-  return (data.series || []).filter(function (s) {
+  return FS.disponiblesPrimero((data.series || []).filter(function (s) {
     return bySerieMov[s.id_serie] || U.key([s.id_serie, s.serie_original, s.codigo, s.descripcion, s.hilos + 'H', s.bodega_actual].join(' ')).indexOf(k) >= 0;
-  }).slice(0, 200);
+  })).slice(0, 200);
 };
 
 FS.report = function (data, tipo, f, today, params) {
@@ -873,8 +880,8 @@ FS.report = function (data, tipo, f, today, params) {
     return { secciones: [
       { titulo: 'Stock por bodega', filas: by(function (s) { return s.bodega_actual; }) },
       { titulo: 'Stock por código', filas: by(function (s) { return s.codigo; }) },
-      { titulo: 'Stock por estado', filas: by(function (s) { return s.estado_actual; }) },
-      { titulo: 'Stock por serie', filas: series.map(function (s) { return { serie: s.id_serie, codigo: s.codigo, hilos: s.hilos, span: s.span, bodega: s.bodega_actual, estado: s.estado_actual, saldo: s.saldo_actual, estado_saldo: s.estado_saldo, confiabilidad: s.nivel_confiabilidad, ultimo_mov: s.fecha_ultimo_mov }; }) }
+      { titulo: 'Stock por estado', filas: FS.disponiblesPrimero(by(function (s) { return s.estado_actual; }), 'grupo') },
+      { titulo: 'Stock por serie', filas: FS.disponiblesPrimero(series).map(function (s) { return { serie: s.id_serie, codigo: s.codigo, hilos: s.hilos, span: s.span, bodega: s.bodega_actual, estado: s.estado_actual, saldo: s.saldo_actual, estado_saldo: s.estado_saldo, confiabilidad: s.nivel_confiabilidad, ultimo_mov: s.fecha_ultimo_mov }; }) }
     ] };
   }
   if (tipo === 'consumo') {
