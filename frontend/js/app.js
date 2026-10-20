@@ -82,7 +82,7 @@
     ['dashboard', 'Inicio', 'leer', '▦'], ['inventario', 'Inventario actual', 'leer', '≡'], ['buscar', 'Buscar serie', 'leer', '⌕'], ['vida', 'Historial fibra', 'leer', '◷'],
     ['Registro'],
     ['movimiento', 'Registrar movimiento', 'registrar', '+'], ['devolucion', 'Registrar devolución', 'registrar', '↩'], ['prestamos', 'Préstamos', 'leer', '⇄'],
-    ['sobrantes', 'Sobrantes', 'leer', '◔'], ['traslado', 'Transferencias', 'registrar', '⇢'],
+    ['sobrantes', 'Sobrantes', 'leer', '◔', 'oculto'], ['traslado', 'Transferencias', 'registrar', '⇢'],
     ['Control'],
     ['alertas', 'Alertas y conciliación', 'leer', '!'], ['reportes', 'Reportes', 'reportes', '▤'], ['abastecimiento', 'Abastecimiento', 'leer', '↗'],
     ['Administración'],
@@ -94,7 +94,7 @@
   function shell(route) {
     var u = BOOT.user;
     $app.innerHTML = '<div class="shell"><nav class="side" id="side"><div class="brand">' + LOGO + '<span>' + esc(cfg.APP_NAME || 'Fibra Stock') + '</span></div>' +
-      NAV.map(function (n) { if (n.length === 1) return '<div class="grp">' + n[0] + '</div>'; if (!can(n[2])) return ''; return '<a href="#' + n[0] + '" data-r="' + n[0] + '"><span style="width:16px;text-align:center">' + n[3] + '</span>' + n[1] + (n[0] === 'alertas' ? '<span class="cnt" id="nav-crit" hidden></span>' : '') + '</a>'; }).join('') +
+      NAV.map(function (n) { if (n.length === 1) return '<div class="grp">' + n[0] + '</div>'; if (!can(n[2]) || n[4] === 'oculto') return ''; return '<a href="#' + n[0] + '" data-r="' + n[0] + '"><span style="width:16px;text-align:center">' + n[3] + '</span>' + n[1] + (n[0] === 'alertas' ? '<span class="cnt" id="nav-crit" hidden></span>' : '') + '</a>'; }).join('') +
       '<div class="me"><b>' + esc(u.nombre || u.email) + '</b>' + esc(u.email) + '<br>Rol: ' + esc(u.rol) + '<div class="row" style="margin-top:8px">' + (Api.demo ? '' : '<button class="btn sm" id="btn-pass">Cambiar clave</button>') + '<button class="btn sm" id="btn-out">Salir</button></div></div></nav>' +
       '<div class="main"><div class="top"><button class="btn sm menu-btn" id="btn-menu" aria-label="Menú">☰</button><h2 id="ttl"></h2><span class="sp"></span>' + (Api.demo ? '<span class="badge-demo">MODO DEMO · datos solo en este navegador</span>' : '') + '<span class="hint">Hoy ' + esc(BOOT.hoy) + '</span></div><div class="content" id="view"></div></div></div>';
     document.getElementById('btn-out').onclick = function () { Api.logout(); BOOT = null; location.hash = '#login'; route_(); };
@@ -438,7 +438,7 @@
   }
   SCREENS.movimiento = async function (v, serie) {
     var c = BOOT.catalogos, tipos = ['DESPACHO', 'INGRESO_INICIAL', 'INVENTARIO_INICIAL_DE_APERTURA', 'INGRESO_ADICIONAL', 'CAMBIO_DE_ESTADO', 'CORTE_O_FRACCIONAMIENTO', 'BAJA_POR_MAL_ESTADO', 'AJUSTE_MANUAL_AUTORIZADO'];
-    v.innerHTML = '<div class="card"><h3>Registrar movimiento</h3><div class="note">Devoluciones, préstamos, sobrantes y traslados tienen pantallas propias para relacionarlos con el despacho o préstamo original. Bajas y ajustes quedan <b>pendientes de aprobación</b> del supervisor.</div>' +
+    v.innerHTML = '<div class="card"><h3>Registrar movimiento</h3><div class="note">Devoluciones, préstamos y traslados tienen pantallas propias para relacionarlos con el despacho o préstamo original. Bajas y ajustes quedan <b>pendientes de aprobación</b> del supervisor.</div>' +
       '<form id="mf"><div class="form-grid">' + field('tipo', 'Tipo de movimiento', 'select', { options: tipos.map(function (t) { return { v: t, l: TIPO_LBL[t] }; }), value: 'DESPACHO', empty: undefined, req: 1 }) + '<div id="sp" class="full"></div><div id="dyn" class="full form-grid"></div></div>' +
       '<div class="actions"><button class="btn pri" type="submit">Registrar</button></div></form>' + datalists() + '</div>';
     var sel = v.querySelector('select[name=tipo]'), dyn = v.querySelector('#dyn'), cur = null;
@@ -457,15 +457,18 @@
       else if (t === 'CORTE_O_FRACCIONAMIENTO') h = met + field('serie_derivada', 'Serie derivada', 'text', { hint: 'Vacío = se genera SERIE-1-001, -002…' }) + common + obs;
       else if (t === 'BAJA_POR_MAL_ESTADO') h = met + bod + common + field('documento', 'Acta / informe', 'text') + obs;
       else if (t === 'AJUSTE_MANUAL_AUTORIZADO') h = field('metraje', 'Ajuste (m)', 'number', { req: 1, hint: 'Positivo suma, negativo resta. Requiere aprobación.' }) + common + field('documento', 'Documento de respaldo', 'text', { req: 1 }) + obs;
-      h += field('evidencia_url', 'Enlace a evidencia (Drive)', 'url', { wide: 1 });
       dyn.innerHTML = h;
+      var j = dyn.querySelector('[name=justificacion]'); if (j) j.closest('.f').hidden = true; // solo se muestra si el servidor la pide (documento y metraje repetidos)
     }
     sel.onchange = draw; draw();
     v.querySelector('#mf').onsubmit = function (e) {
       e.preventDefault(); var d = formData(e.target), btn = e.target.querySelector('[type=submit]'); busy(btn, true);
       var action = d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? 'cut' : 'registerMovement';
       api(action, d).then(function (r) { toast('Registrado ' + r.movimientos.join(', ') + '. Saldo de ' + r.serie.id_serie + ': ' + fmt(r.serie.saldo_actual) + ' m', 'ok'); location.hash = '#vida/' + encodeURIComponent(d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? d.serie.toUpperCase() : r.serie.id_serie); })
-        .catch(function (x) { busy(btn, false); toast(x.message, 'err'); });
+        .catch(function (x) {
+          busy(btn, false); toast(x.message, 'err');
+          var j = dyn.querySelector('[name=justificacion]'); if (j && /justificaci/i.test(x.message)) { j.closest('.f').hidden = false; j.focus(); }
+        });
     };
   };
 
