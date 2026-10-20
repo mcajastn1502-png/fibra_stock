@@ -350,6 +350,25 @@ En el **modo demo**, la pantalla de ingreso también permite pegar un enlace de 
 
 **Modo demo**: si `API_URL` está vacío, la app permite cargar el CSV en el navegador y probar todas las pantallas con cualquier rol, sin servidor (los datos quedan solo en ese navegador).
 
+### Paso 9 — Transición y corte desde la hoja de trabajo anterior
+Mientras la aplicación está en evaluación, el equipo puede seguir anotando en la hoja de cálculo que usaba hasta ahora. La app se mantiene al día importando la matriz desde esa hoja. Cuando la aplicación se aprueba, se hace una importación final y, desde entonces, todo se registra en la app.
+
+**Preparación (una sola vez)**
+1. En la hoja de trabajo anterior: **Compartir** → agregue la cuenta propietaria del script como **Lector**. La hoja no necesita ser pública.
+2. En la hoja de la base de datos: **Fibra Stock › Configurar origen de la matriz (Google Sheets)** → pegue el enlace de la pestaña de la matriz de la hoja anterior (con `#gid=…`).
+
+**Durante la transición**
+- Para ver los datos al día: **Fibra Stock › 3. Importar matriz histórica**. Es un solo paso y se puede repetir las veces que haga falta.
+- **Registre los movimientos solo en la hoja anterior.** Use la app para consultar, revisar alertas y sacar reportes. Un movimiento anotado en ambos lados se cuenta dos veces.
+- **No concilie alertas ni préstamos importados todavía.** Cada importación regenera las alertas y los préstamos que vienen de la matriz, y su estado vuelve al inicial. Los movimientos registrados desde la app sí se conservan siempre.
+
+**Día del corte (aprobación de la app)**
+1. Avise al equipo que deje de anotar en la hoja anterior.
+2. Ejecute **Fibra Stock › 3. Importar matriz histórica** por última vez y confirme en **Bitácora** el resumen (*filas → movimientos, series, alertas*).
+3. Deje la hoja anterior en **solo lectura** (Compartir → todos como Lector) para que nadie siga anotando ahí.
+4. **Desconecte el origen:** **Fibra Stock › Configurar origen de la matriz** → deje el enlace vacío. Así nadie reimporta por error: una reimportación no borra lo registrado en la app, pero reinicia las alertas y los préstamos conciliados.
+5. Desde ese momento, todos los movimientos se registran y consultan en la app. Ya puede iniciar la conciliación histórica (sección 18).
+
 ---
 
 ## 16. Ejemplos con registros reales
