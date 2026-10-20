@@ -384,6 +384,7 @@
       '<div class="life-head" style="margin-top:14px">' + M('Metraje inicial conocido', s.metraje_inicial) + M('Total despachado', s.total_despachado) + M('Total devuelto', s.total_devuelto) +
       M('Consumo calculado', s.consumo_calculado) + M('Prestado', s.total_prestado - s.total_dev_prestamo) + M('Dado de baja', s.total_baja) + M('Saldo actual', s.saldo_actual) +
       M('Bodega actual', esc(s.bodega_actual || '—') + '<div class="hint" style="font-family:var(--sans);font-weight:400">' + esc(s.ubicacion_actual || '') + '</div>', 1) + M('Confiabilidad', esc(s.nivel_confiabilidad), 1) + '</div></div>' +
+      '<div class="card"><h3>Registros originales en la matriz<small>valores originales y normalizados</small></h3><div id="orig"></div></div>' +
       '<div class="grid g2"><div class="card"><h3>Historial cronológico<small>saldo acumulado después de cada movimiento</small></h3><ul class="timeline">' +
       L.timeline.map(function (t) {
         var cls = !t.vigente ? 'void' : t.delta < 0 ? 'out' : t.delta === 0 ? 'zero' : '';
@@ -400,8 +401,7 @@
       '<h3 style="margin-top:14px">Documentos asociados</h3><div class="chips">' + (L.documentos.map(function (x) { return '<a class="chip" href="#buscar/' + encodeURIComponent(x) + '">' + esc(x) + '</a>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
       '<h3 style="margin-top:14px">Observaciones</h3>' + (L.observaciones.map(function (x) { return '<div class="hint" style="margin-bottom:4px">• ' + esc(x) + '</div>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
       '<div class="card"><h3>Familia del rollo<small>series relacionadas (no se fusionan automáticamente)</small></h3><div id="fam"></div></div>' +
-      (L.prestamos.length || L.sobrantes.length ? '<div class="card"><h3>Préstamos y sobrantes</h3><div id="ps"></div></div>' : '') + '</div></div>' +
-      '<div class="card"><h3>Registros originales en la matriz<small>valores originales y normalizados</small></h3><div id="orig"></div></div>';
+      (L.prestamos.length || L.sobrantes.length ? '<div class="card"><h3>Préstamos y sobrantes</h3><div id="ps"></div></div>' : '') + '</div></div>';
     table(document.getElementById('cons'), { rows: L.consumo_por_despacho, cols: [{ k: 'fecha', l: 'Fecha' }, { k: 'documento', l: 'Doc.' }, { k: 'despachado', l: 'Despachado', n: 1 }, { k: 'devuelto', l: 'Devuelto', n: 1 }, { k: 'consumo', l: 'Consumo', n: 1 }, { k: 'ruta', l: 'Ruta' }], name: 'consumo_' + s.id_serie });
     table(document.getElementById('al'), { rows: L.alertas, cols: [{ k: 'severidad', l: 'Sev.', f: function (x) { return pill(x, 1); } }, { k: 'tipo', l: 'Tipo', f: function (x, r) { return esc(x.replace(/_/g, ' ')) + '<span class="sub">' + esc(r.valor_encontrado) + ' · esperado: ' + esc(r.valor_esperado) + '</span>'; } }, { k: 'estado', l: 'Estado', f: function (x) { return pill(x); } }], name: 'alertas_' + s.id_serie, onRow: alertModal });
     var famEl = document.getElementById('fam');
