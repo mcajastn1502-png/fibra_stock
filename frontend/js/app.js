@@ -230,6 +230,11 @@
     var sync = function () { desc.value = artDesc(cod.value); };
     cod.addEventListener('input', sync); cod.addEventListener('change', sync); sync();
   }
+  /** Pone el código de la serie consultada (o lo limpia) y actualiza su descripción. */
+  function setCodigo(root, s) {
+    var cod = root.querySelector('[name=codigo]'); if (!cod) return;
+    cod.value = s ? s.codigo || '' : ''; cod.dispatchEvent(new Event('change'));
+  }
   /** Al elegir un código, llena Descripción. Ese texto es informativo: no se envía como filtro mientras el usuario no lo edite. */
   function bindCodigoDesc(form) {
     var cod = form.querySelector('[name=codigo]'), desc = form.querySelector('[name=descripcion]');
@@ -497,10 +502,10 @@
       field('bodega', 'Bodega receptora', 'select', { options: c.bodegas, req: 1 }) + field('estado_material', 'Estado del material', 'select', { options: ['DISPONIBLE', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) +
       field('motivo', 'Motivo de devolución', 'text', { req: 1, wide: 1 }) + field('documento', 'Documento de devolución', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) +
       '<div class="full note" id="calc" hidden></div></div><div class="actions"><button class="btn pri" type="submit">Registrar devolución</button></div></form></div>';
-    var desp = v.querySelector('#desp'), list = [], calc = v.querySelector('#calc'), met = v.querySelector('input[name=metraje]'), cod = v.querySelector('input[name=codigo]');
+    var desp = v.querySelector('#desp'), list = [], calc = v.querySelector('#calc'), met = v.querySelector('input[name=metraje]');
     bindCodigoFields(v, false);
     seriePicker(v.querySelector('#sp'), function (s) {
-      cod.value = s ? s.codigo : ''; cod.dispatchEvent(new Event('change'));
+      setCodigo(v, s);
       if (!s) { desp.innerHTML = '<option value="">— serie no válida —</option>'; return; }
       v.querySelector('select[name=bodega]').value = s.bodega_actual || '';
       api('dispatchesOf', { serie: s.id_serie }).then(function (r) {
@@ -527,14 +532,15 @@
   /* ============================ 7. préstamos ============================ */
   SCREENS.prestamos = async function (v) {
     var c = BOOT.catalogos, loans = await api('loans');
-    v.innerHTML = (can('registrar') ? '<div class="card"><h3>Registrar préstamo</h3><form id="pf"><div class="form-grid"><div id="sp" class="full"></div>' + field('metraje', 'Metraje prestado (m)', 'number', { req: 1 }) +
+    v.innerHTML = (can('registrar') ? '<div class="card"><h3>Registrar préstamo</h3><form id="pf"><div class="form-grid"><div id="sp" class="full"></div>' + codigoFields(false) + field('metraje', 'Metraje prestado (m)', 'number', { req: 1 }) +
       field('responsable', 'Persona responsable', 'text', { req: 1 }) + field('fecha', 'Fecha de préstamo', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
       field('fecha_limite', 'Fecha límite de devolución', 'date', { req: 1, value: addDays(todayISO(), +(BOOT.params.DIAS_PRESTAMO_DEFECTO || 15)) }) + field('bodega', 'Bodega', 'select', { options: c.bodegas, req: 1 }) +
       field('contratista', 'Contratista', 'text', { list: 'dl-con' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep' }) + field('proyecto', 'Proyecto', 'text', { wide: 1 }) +
       field('documento', 'Documento de respaldo', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) + '</div><div class="actions"><button class="btn pri" type="submit">Registrar préstamo</button></div></form>' + datalists() + '</div>' : '') +
       '<div class="card"><h3>Préstamos</h3><div class="note warn">Los préstamos importados de la matriz no tienen fecha límite: quedan <b>PENDIENTE DE CONCILIACIÓN</b> hasta que se complete el dato. Las observaciones de texto libre ("prestada a…", "hay que devolver") se convirtieron en tareas en Alertas, no en devoluciones.</div><div id="lt"></div></div>';
     if (can('registrar')) {
-      seriePicker(v.querySelector('#sp'), function (s) { if (s) v.querySelector('#pf select[name=bodega]').value = s.bodega_actual; });
+      var pf = v.querySelector('#pf'); bindCodigoFields(pf, false);
+      seriePicker(v.querySelector('#sp'), function (s) { setCodigo(pf, s); if (s) pf.querySelector('select[name=bodega]').value = s.bodega_actual; });
       v.querySelector('#pf').onsubmit = function (e) { e.preventDefault(); var d = formData(e.target), b = e.target.querySelector('[type=submit]'); busy(b, true); api('registerLoan', d).then(function (r) { toast('Préstamo ' + r.prestamo + ' registrado.', 'ok'); route_(); }).catch(function (x) { busy(b, false); toast(x.message, 'err'); }); };
     }
     table(document.getElementById('lt'), { rows: loans, name: 'prestamos', cols: [{ k: 'id_prestamo', l: 'ID' }, { k: 'serie', l: 'Serie', f: function (x, r) { return '<a href="#vida/' + encodeURIComponent(r.id_serie) + '">' + esc(x) + '</a>'; } },
@@ -542,7 +548,7 @@
       { k: 'fecha_prestamo', l: 'Fecha' }, { k: 'fecha_limite', l: 'Límite' }, { k: 'estado', l: 'Estado', f: function (x) { return pill(x); } },
       { k: 'id_mov_prestamo', l: '', f: function (x, r) { var open = ['ACTIVO', 'VENCIDO', 'PENDIENTE_DE_CONCILIACION', 'DEVUELTO_PARCIAL'].indexOf(r.estado) >= 0; return (open && can('registrar') ? '<button class="btn sm" data-dev="' + esc(r.id_prestamo) + '">Devolver</button> ' : '') + (can('aprobar') && open ? '<button class="btn sm" data-st="' + esc(r.id_prestamo) + '">Estado</button>' : ''); } }],
       after: function (el) {
-        el.querySelectorAll('[data-dev]').forEach(function (b) { b.onclick = function () { var p = loans.filter(function (x) { return x.id_prestamo === b.dataset.dev; })[0]; modal('<h3>Devolver préstamo ' + esc(p.id_prestamo) + '</h3><p class="hint">Prestado ' + m(p.metraje_prestado) + ' a ' + esc(p.responsable) + (p.metraje_devuelto ? ' · ya devuelto ' + m(p.metraje_devuelto) : '') + '</p><div class="form-grid">' + field('metraje', 'Metraje devuelto (m)', 'number', { req: 1 }) + field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO() }) + field('bodega', 'Bodega receptora', 'select', { options: BOOT.catalogos.bodegas }) + field('estado_material', 'Estado del material', 'select', { options: ['DISPONIBLE', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + field('observacion', 'Observaciones', 'textarea', { full: 1 }) + '</div><div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Registrar</button></div>', function (md, close) { md.querySelector('#ok').onclick = function () { var d = formData(md); d.id_prestamo = p.id_prestamo; api('returnLoan', d).then(function () { toast('Devolución de préstamo registrada.', 'ok'); close(); route_(); }).catch(function (x) { toast(x.message, 'err'); }); }; }); }; });
+        el.querySelectorAll('[data-dev]').forEach(function (b) { b.onclick = function () { var p = loans.filter(function (x) { return x.id_prestamo === b.dataset.dev; })[0]; modal('<h3>Devolver préstamo ' + esc(p.id_prestamo) + '</h3><p class="hint">Prestado ' + m(p.metraje_prestado) + ' a ' + esc(p.responsable) + (p.metraje_devuelto ? ' · ya devuelto ' + m(p.metraje_devuelto) : '') + '</p><div class="form-grid">' + codigoFields(false, p.codigo) + field('metraje', 'Metraje devuelto (m)', 'number', { req: 1 }) + field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO() }) + field('bodega', 'Bodega receptora', 'select', { options: BOOT.catalogos.bodegas }) + field('estado_material', 'Estado del material', 'select', { options: ['DISPONIBLE', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + field('observacion', 'Observaciones', 'textarea', { full: 1 }) + '</div><div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Registrar</button></div>', function (md, close) { bindCodigoFields(md, false); md.querySelector('#ok').onclick = function () { var d = formData(md); d.id_prestamo = p.id_prestamo; api('returnLoan', d).then(function () { toast('Devolución de préstamo registrada.', 'ok'); close(); route_(); }).catch(function (x) { toast(x.message, 'err'); }); }; }); }; });
         el.querySelectorAll('[data-st]').forEach(function (b) { b.onclick = function () { modal('<h3>Estado manual del préstamo</h3><div class="form-grid">' + field('estado', 'Estado', 'select', { options: ['PERDIDO', 'CONSUMIDO_EN_OBRA'], req: 1 }) + field('comentario', 'Comentario', 'textarea', { full: 1, req: 1 }) + '</div><div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) { md.querySelector('#ok').onclick = function () { var d = formData(md); d.id_prestamo = b.dataset.st; api('setLoanState', d).then(function () { toast('Estado actualizado.', 'ok'); close(); route_(); }).catch(function (x) { toast(x.message, 'err'); }); }; }); }; });
       } });
   };
@@ -551,13 +557,13 @@
   /* ============================ 8. sobrantes ============================ */
   SCREENS.sobrantes = async function (v) {
     var c = BOOT.catalogos, rows = await api('surpluses');
-    v.innerHTML = (can('registrar') ? '<div class="card"><h3>Declarar sobrante de obra</h3><div class="note">El sobrante declarado <b>no entra al stock</b> hasta confirmar su recepción física y condición.</div><form id="sf"><div class="form-grid"><div id="sp" class="full"></div><div class="f full"><label>Despacho de origen <span class="req">*</span></label><select name="id_despacho" id="desp"></select></div>' +
+    v.innerHTML = (can('registrar') ? '<div class="card"><h3>Declarar sobrante de obra</h3><div class="note">El sobrante declarado <b>no entra al stock</b> hasta confirmar su recepción física y condición.</div><form id="sf"><div class="form-grid"><div id="sp" class="full"></div><div class="f full"><label>Despacho de origen <span class="req">*</span></label><select name="id_despacho" id="desp"></select></div>' + codigoFields(false) +
       field('metraje_sobrante', 'Metraje sobrante (m)', 'number', { req: 1 }) + field('metraje_utilizado', 'Metraje utilizado (m)', 'number', { hint: 'Vacío = despachado − sobrante' }) + field('bodega', 'Bodega receptora', 'select', { options: c.bodegas }) +
       field('nuevo_proyecto', 'Nuevo proyecto asignado', 'text', { wide: 1 }) + field('observacion', 'Observaciones', 'textarea', { full: 1 }) + '</div><div class="actions"><button class="btn pri" type="submit">Declarar</button></div></form></div>' : '') +
       '<div class="card"><h3>Sobrantes</h3><div id="st"></div></div>';
     if (can('registrar')) {
-      var desp = v.querySelector('#desp');
-      seriePicker(v.querySelector('#sp'), function (s) { if (!s) return; api('dispatchesOf', { serie: s.id_serie }).then(function (r) { desp.innerHTML = r.map(function (x) { return '<option value="' + x.id_movimiento + '">' + esc(x.fecha + ' · doc ' + (x.documento || 's/d') + ' · ' + fmt(x.despachado) + ' m · ' + x.ruta) + '</option>'; }).join('') || '<option value="">Sin despachos pendientes</option>'; }); });
+      var desp = v.querySelector('#desp'), sf = v.querySelector('#sf'); bindCodigoFields(sf, false);
+      seriePicker(v.querySelector('#sp'), function (s) { setCodigo(sf, s); if (!s) return; api('dispatchesOf', { serie: s.id_serie }).then(function (r) { desp.innerHTML = r.map(function (x) { return '<option value="' + x.id_movimiento + '">' + esc(x.fecha + ' · doc ' + (x.documento || 's/d') + ' · ' + fmt(x.despachado) + ' m · ' + x.ruta) + '</option>'; }).join('') || '<option value="">Sin despachos pendientes</option>'; }); });
       v.querySelector('#sf').onsubmit = function (e) { e.preventDefault(); var d = formData(e.target), b = e.target.querySelector('[type=submit]'); busy(b, true); api('registerSurplus', d).then(function (r) { toast('Sobrante declarado. Consumo preliminar ' + fmt(r.consumo_preliminar) + ' m.', 'ok'); route_(); }).catch(function (x) { busy(b, false); toast(x.message, 'err'); }); };
     }
     table(document.getElementById('st'), { rows: rows, name: 'sobrantes', cols: [{ k: 'id_sobrante', l: 'ID' }, { k: 'serie', l: 'Serie', f: function (x, r) { return '<a href="#vida/' + encodeURIComponent(r.id_serie) + '">' + esc(x) + '</a>'; } }, { k: 'proyecto_original', l: 'Proyecto original' },
@@ -573,10 +579,11 @@
   /* ============================ 9. traslado ============================ */
   SCREENS.traslado = async function (v, serie) {
     var c = BOOT.catalogos;
-    v.innerHTML = '<div class="card"><h3>Trasladar entre bodegas</h3><div class="note">Se traslada el saldo completo de la serie. El saldo de la serie no cambia; cambia su bodega actual. Para mover solo una parte, registre primero un corte.</div><form id="tf"><div class="form-grid"><div id="sp" class="full"></div>' +
+    v.innerHTML = '<div class="card"><h3>Trasladar entre bodegas</h3><div class="note">Se traslada el saldo completo de la serie. El saldo de la serie no cambia; cambia su bodega actual. Para mover solo una parte, registre primero un corte.</div><form id="tf"><div class="form-grid"><div id="sp" class="full"></div>' + codigoFields(false) +
       field('bodega_destino', 'Bodega destino', 'select', { options: c.bodegas, req: 1 }) + field('ubicacion', 'Ubicación destino', 'select', { options: c.ubicaciones, empty: '—' }) + field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
       field('documento', 'Documento de traslado', 'text', { req: 1 }) + field('responsable', 'Responsable del transporte', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) + '</div><div class="actions"><button class="btn pri" type="submit">Trasladar</button></div></form></div>';
-    seriePicker(v.querySelector('#sp'), function () {}, serie);
+    var tf = v.querySelector('#tf'); bindCodigoFields(tf, false);
+    seriePicker(v.querySelector('#sp'), function (s) { setCodigo(tf, s); }, serie);
     v.querySelector('#tf').onsubmit = function (e) { e.preventDefault(); var d = formData(e.target), b = e.target.querySelector('[type=submit]'); busy(b, true); api('transfer', d).then(function (r) { toast('Traslado registrado. Ahora en ' + r.serie.bodega_actual, 'ok'); location.hash = '#vida/' + encodeURIComponent(r.serie.id_serie); }).catch(function (x) { busy(b, false); toast(x.message, 'err'); }); };
   };
 
