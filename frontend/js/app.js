@@ -490,7 +490,8 @@
       else if (t === 'BAJA_POR_MAL_ESTADO') h = docGen + met + bod + common + field('documento', 'Acta / informe (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
       else if (t === 'AJUSTE_MANUAL_AUTORIZADO') h = docGen + field('metraje', 'Ajuste (m)', 'number', { req: 1, hint: 'Positivo suma, negativo resta. Requiere aprobación.' }) + common + field('documento', 'Documento de respaldo (opcional)', 'text', { req: 1, hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
       var nueva = t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA';
-      if (!nueva) h = codigoFields(false, cur && cur.codigo) + h;
+      if (!nueva) h = docGen + codigoFields(false, cur && cur.codigo) + h;
+      else h = docGen + h;
       dyn.innerHTML = h;
       bindCodigoFields(dyn, nueva);
       var j = dyn.querySelector('[name=justificacion]'); if (j) j.closest('.f').hidden = true; // solo se muestra si el servidor la pide (documento y metraje repetidos)
