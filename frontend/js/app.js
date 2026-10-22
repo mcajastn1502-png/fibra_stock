@@ -132,7 +132,7 @@
   function renderLogin(err) {
     $app.innerHTML = '<div class="login"><div class="login-card"><div class="brand">' + LOGO + '<span>' + esc(cfg.APP_NAME || 'Fibra Stock') + '</span></div>' +
       '<h1>Inventario de fibra óptica</h1><p class="sub">' + esc(cfg.EMPRESA || '') + '</p>' + (err ? '<div class="note err">' + esc(err) + '</div>' : '') +
-      (Api.demo ? demoLogin() : '<form id="lf"><div class="grid" style="gap:12px">' + field('email', 'Correo', 'email', { req: 1 }) + field('password', 'Contraseña', 'password', { req: 1 }) + '</div><div class="actions"><button class="btn pri" type="submit">Ingresar</button></div></form>') +
+      (Api.demo ? demoLogin() : '<form id="lf"><div class="grid" style="gap:12px">' + field('email', 'Correo', 'email', { req: 1 }) + '<div class="f"><label>Contraseña</label><div class="row"><input id="pw" name="password" type="password" placeholder="Contraseña" style="flex:1"><button type="button" class="btn sm" onclick="var pw=document.getElementById(\'pw\'); pw.type=pw.type===\'password\'?\'text\':\'password\'; this.textContent=pw.type===\'text\'?\'Ocultar\':\'Mostrar\';">Mostrar</button></div></div>' + '</div><div class="actions"><a href="#" onclick="var d=formData(document.getElementById(\'lf\')); if(!d.email){toast(\'Ingrese su correo\',\'err\');return false;} api(\'resetPassword\',{email:d.email}).then(function(r){toast(r.mensaje,\'ok\');}).catch(function(x){toast(x.message,\'err\');}); return false;" class="link">Recuperar contraseña</a><button class="btn pri" type="submit">Ingresar</button></div></form>') +
       '</div></div>';
     if (Api.demo) bindDemo();
     else document.getElementById('lf').onsubmit = function (e) {

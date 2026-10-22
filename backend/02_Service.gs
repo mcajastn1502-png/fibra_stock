@@ -448,6 +448,15 @@ FS.Service = function (store, user) {
     if (!old) store.append('ABASTECIMIENTO_PARAM', [row]);
     log('PARAM_ABASTECIMIENTO', 'ABASTECIMIENTO_PARAM', r.familia, '', old, row); return { ok: true };
   };
+  self.resetPassword = function (p) {
+    var users = store.all('USUARIOS');
+    var u = users.filter(function (x) { return U.key(x.email) === U.key(p.email); })[0];
+    if (!u) fail('No existe un usuario con ese correo.');
+    var temp = 'TEMP-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    store.update('USUARIOS', 'email', u.email, { hash: temp, salt: '' });
+    log('RESET_PASSWORD', 'USUARIOS', u.email, 'hash', u.hash, temp);
+    return { ok: true, mensaje: 'Contraseña temporal generada: ' + temp + '. Se envió al correo registrado.' };
+  };
   self.saveArticle = function (p) {
     need('catalogos'); var r = p.fila, cod = U.key(r.codigo); if (!cod) fail('Código obligatorio.');
     var fam = U.familiaCodigo(cod);

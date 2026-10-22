@@ -35,6 +35,7 @@ window.Api = (function () {
     if (action === 'saveUser') throw new Error('En modo demo los usuarios se simulan eligiendo el rol al ingresar.');
     if (action === 'changePassword') throw new Error('No disponible en modo demo.');
     if (action === 'exportReport') throw new Error('La exportación a Google Sheets requiere el backend de Apps Script. Use Excel o PDF en la demo.');
+    if (action === 'resetPassword') return svc.resetPassword(p);
     if (action === 'logout') return true;
     if (typeof svc[action] !== 'function') throw new Error('Acción desconocida: ' + action);
     return svc[action](p);
