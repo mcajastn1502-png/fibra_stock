@@ -32,7 +32,7 @@
     var ctl;
     if (type === 'select') ctl = '<select id="' + id + '" name="' + name + '">' + opt(o.options || [], o.value, o.empty === undefined ? '— seleccione —' : o.empty) + '</select>';
     else if (type === 'textarea') ctl = '<textarea id="' + id + '" name="' + name + '" placeholder="' + esc(o.ph || '') + '">' + esc(o.value || '') + '</textarea>';
-    else ctl = '<input id="' + id + '" name="' + name + '" type="' + (type || 'text') + '" value="' + esc(o.value === undefined ? '' : o.value) + '"' + (o.list ? ' list="' + o.list + '"' : '') + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : '') + (type === 'number' ? ' inputmode="numeric" step="any"' : '') + (o.max ? ' max="' + o.max + '"' : '') + '>';
+    else ctl = '<input id="' + id + '" name="' + name + '" type="' + (type || 'text') + '" value="' + esc(o.value === undefined ? '' : o.value) + '"' + (o.readonly ? ' readonly' : '') + (o.disabled ? ' disabled' : '') + (o.list ? ' list="' + o.list + '"' : '') + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : '') + (type === 'number' ? ' inputmode="numeric" step="any"' : '') + (o.max ? ' max="' + o.max + '"' : '') + '>';
     return '<div class="f' + (o.full ? ' full' : '') + (o.wide ? ' wide' : '') + '"><label for="' + id + '">' + esc(label) + req + '</label>' + ctl + (o.hint ? '<span class="hint">' + o.hint + '</span>' : '') + '</div>';
   }
   function datalists() {
