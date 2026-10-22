@@ -548,7 +548,9 @@
   /* ============================ 7. préstamos ============================ */
   SCREENS.prestamos = async function (v) {
     var c = BOOT.catalogos, loans = await api('loans');
-    v.innerHTML = (can('registrar') ? '<div class="card"><h3>Registrar préstamo</h3><form id="pf"><div class="form-grid"><div id="sp" class="full"></div>' + codigoFields(false) + field('metraje', 'Metraje prestado (m)', 'number', { req: 1 }) +
+    v.innerHTML = (can('registrar') ? '<div class="card"><h3>Registrar préstamo</h3><form id="pf"><div class="form-grid"><div id="sp" class="full"></div>' +
+      field('documento_generado', 'Documento generado', 'text', { value: 'PR-001', readonly: 1, hint: 'Generado automáticamente por el sistema.' }) +
+      codigoFields(false) + field('metraje', 'Metraje prestado (m)', 'number', { req: 1 }) +
       field('responsable', 'Persona responsable', 'text', { req: 1 }) + field('fecha', 'Fecha de préstamo', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
       field('fecha_limite', 'Fecha límite de devolución', 'date', { req: 1, value: addDays(todayISO(), +(BOOT.params.DIAS_PRESTAMO_DEFECTO || 15)) }) + field('bodega', 'Bodega', 'select', { options: c.bodegas, req: 1 }) +
       field('contratista', 'Contratista', 'text', { list: 'dl-con' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep' }) + field('proyecto', 'Proyecto', 'text', { wide: 1 }) +
@@ -595,7 +597,9 @@
   /* ============================ 9. traslado ============================ */
   SCREENS.traslado = async function (v, serie) {
     var c = BOOT.catalogos;
-    v.innerHTML = '<div class="card"><h3>Trasladar entre bodegas</h3><div class="note">Se traslada el saldo completo de la serie. El saldo de la serie no cambia; cambia su bodega actual.</div><form id="tf"><div class="form-grid"><div id="sp" class="full"></div>' + codigoFields(false) +
+    v.innerHTML = '<div class="card"><h3>Trasladar entre bodegas</h3><div class="note">Se traslada el saldo completo de la serie. El saldo de la serie no cambia; cambia su bodega actual.</div><form id="tf"><div class="form-grid"><div id="sp" class="full"></div>' +
+      field('documento_generado', 'Documento generado', 'text', { value: 'TR-001', readonly: 1, hint: 'Generado automáticamente por el sistema.' }) +
+      codigoFields(false) +
       field('bodega_destino', 'Bodega destino', 'select', { options: c.bodegas, req: 1 }) + field('ubicacion', 'Ubicación destino', 'select', { options: c.ubicaciones, empty: '—' }) + field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
       field('documento', 'Documento de traslado', 'text', { req: 1 }) + field('responsable', 'Responsable del transporte', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) + '</div><div class="actions"><button class="btn pri" type="submit">Trasladar</button></div></form></div>';
     var tf = v.querySelector('#tf'); bindCodigoFields(tf, false);
