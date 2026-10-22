@@ -48,7 +48,7 @@ El menú lateral organiza las tareas. Algunas opciones solo aparecen para roles 
 3. Seleccione la serie para abrir **Historial fibra**.
 4. Revise el saldo, estado, bodega actual, alertas y la línea de tiempo antes de registrar otro movimiento.
 
-El saldo se calcula a partir de los movimientos vigentes. Una serie marcada como pendiente de conciliación requiere revisión; no asuma que su saldo es definitivo.
+El saldo se calcula a partir de los movimientos vigentes. Una serie marcada como pendiente de Revisión requiere revisión; no asuma que su saldo es definitivo.
 
 ## 4. Registrar operaciones
 
@@ -71,7 +71,7 @@ Si el metraje supera el saldo, el sistema rechaza la operación y registra una a
 3. Ingrese el metraje, la bodega receptora y el motivo.
 4. Verifique el resumen antes de confirmar.
 
-Una devolución vinculada no puede superar el metraje pendiente del despacho. Una devolución sin referencia genera una alerta para conciliación.
+Una devolución vinculada no puede superar el metraje pendiente del despacho. Una devolución sin referencia genera una alerta para Revisión.
 
 ### Préstamo y devolución de préstamo
 
@@ -89,7 +89,7 @@ En **Sobrantes**, relacione el sobrante con el despacho, registre el metraje sob
 
 Las bajas por mal estado y los ajustes manuales quedan pendientes de aprobación. Un supervisor o administrador debe aprobarlos; quien los registró no puede aprobar su propio movimiento, salvo ADMIN. Indique siempre un motivo claro.
 
-## 5. Alertas y conciliación
+## 5. Alertas y Revisión
 
 Abra **Alertas** para filtrar por estado, categoría, severidad, tipo o serie. En **Historial fibra** puede revisar el contexto de una alerta junto al historial de esa serie.
 
@@ -98,7 +98,7 @@ Abra **Alertas** para filtrar por estado, categoría, severidad, tipo o serie. E
 - Las alertas críticas solo las puede cerrar ADMIN o SUPERVISOR.
 - Las alertas dinámicas pueden actualizarse después de un movimiento o del recálculo diario.
 
-Cuando el origen o saldo de una serie no esté claro, documente la discrepancia y solicite conciliación; no invente un movimiento para hacer coincidir la hoja con una estimación.
+Cuando el origen o saldo de una serie no esté claro, documente la discrepancia y solicite Revisión; no invente un movimiento para hacer coincidir la hoja con una estimación.
 
 ## 6. Reportes y abastecimiento
 
@@ -133,7 +133,7 @@ Los permisos efectivos pueden limitar acciones o pantallas. El servidor valida l
 |---|---|
 | Sesión vencida | Inicie sesión otra vez. |
 | Serie no existe | Revise la escritura o localícela por código, documento o proyecto antes de registrar un ingreso. |
-| Saldo insuficiente o serie en otra bodega | Abra **Historial fibra** y confirme movimientos, saldo y bodega; solicite conciliación si hay diferencias. |
+| Saldo insuficiente o serie en otra bodega | Abra **Historial fibra** y confirme movimientos, saldo y bodega; solicite Revisión si hay diferencias. |
 | Metraje ambiguo | Ingréselo sin separadores de miles y confirme el dato con el documento físico. |
 | Acción no permitida | Solicite el rol adecuado; no use la cuenta de otra persona. |
 | No aparece una opción del menú | Puede no estar habilitada para su rol. Consulte al administrador. |

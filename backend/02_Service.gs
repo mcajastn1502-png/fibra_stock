@@ -226,7 +226,7 @@ FS.Service = function (store, user) {
       m.aprobacion = 'PENDIENTE'; m.estado_registro = 'ABIERTO';
     } else if (t === 'CAMBIO_DE_ESTADO') {
       if (!s) fail('La serie no existe.');
-      if (['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO', 'EN_CONCILIACION'].indexOf(p.estado) < 0) fail('Estado no permitido para cambio manual: ' + p.estado);
+      if (['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO', 'EN_REVISION'].indexOf(p.estado) < 0) fail('Estado no permitido para cambio manual: ' + p.estado);
       if (p.estado === 'RESERVADA' && U.isEmpty(p.proyecto)) fail('Indique el proyecto para el que se reserva.');
       if (p.estado === 'MAL_ESTADO' && U.isEmpty(p.observacion)) fail('Describa el daño encontrado.');
       m.metraje = 0; m.signo = 0; m.bodega_origen = s.bodega_actual; m.bodega_destino = s.bodega_actual; m.estado_resultante = p.estado;
@@ -236,7 +236,7 @@ FS.Service = function (store, user) {
     return save([m]);
   };
 
-  /** Devolución relacionada con el despacho original (o sin referencia → conciliación). */
+  /** Devolución relacionada con el despacho original (o sin referencia → Revisión). */
   self.registerReturn = function (p) {
     need('registrar');
     var s = getSerie(p.serie); if (!s) fail('La serie no existe.');

@@ -26,7 +26,7 @@ FS.SCHEMA = {
     'span', 'metraje_inicial', 'total_ingresado', 'total_despachado', 'total_devuelto', 'total_prestado',
     'total_dev_prestamo', 'total_baja', 'total_corte', 'total_ajuste', 'consumo_calculado', 'saldo_actual',
     'estado_actual', 'bodega_actual', 'ubicacion_actual', 'reservado_para', 'fecha_ultimo_mov', 'num_movimientos',
-    'nivel_confiabilidad', 'estado_saldo', 'estado_conciliacion', 'alertas_abiertas'],
+    'nivel_confiabilidad', 'estado_saldo', 'estado_REVISION', 'alertas_abiertas'],
   MOVIMIENTOS: ['id_movimiento', 'id_serie', 'codigo', 'serie_original', 'serie_derivada', 'fecha', 'tipo', 'metraje', 'signo',
     'bodega_origen', 'bodega_destino', 'ubicacion', 'estado_resultante', 'proyecto_ruta', 'departamento_original',
     'departamento', 'contratista_original', 'contratista', 'responsable', 'documento', 'documento_ref', 'usuario',
@@ -82,11 +82,11 @@ FS.TIPOS_MOV = {
   CAMBIO_DE_ESTADO:              { signo: 0,  grupo: 'estado',      requiereDoc: false }  // reservar, liberar, marcar mal estado
 };
 
-FS.ESTADOS = ['DISPONIBLE', 'DESPACHADA', 'PRESTADA', 'RESERVADA', 'DEVUELTA', 'MAL_ESTADO', 'BAJA', 'EN_CONCILIACION',
+FS.ESTADOS = ['DISPONIBLE', 'DESPACHADA', 'PRESTADA', 'RESERVADA', 'DEVUELTA', 'MAL_ESTADO', 'BAJA', 'EN_REVISION',
   'TRASLADADA', 'AGOTADA'];
 FS.BODEGAS = ['BQUS', 'BQEF', 'BQZ3'];
 FS.UBICACIONES = ['EXT 02 BODEGA', 'EXT 03 BODEGA', 'SAN FERNANDO'];
-FS.ESTADOS_PRESTAMO = ['ACTIVO', 'DEVUELTO_COMPLETO', 'DEVUELTO_PARCIAL', 'VENCIDO', 'PENDIENTE_DE_CONCILIACION',
+FS.ESTADOS_PRESTAMO = ['ACTIVO', 'DEVUELTO_COMPLETO', 'DEVUELTO_PARCIAL', 'VENCIDO', 'PENDIENTE_DE_REVISION',
   'PERDIDO', 'CONSUMIDO_EN_OBRA'];
 FS.HILOS_STD = [2, 6, 12, 24, 48, 96, 144];
 
@@ -102,33 +102,33 @@ FS.ALERTAS = {
   DOC_DESPACHO_DUPLICADO:    ['CRITICA', 'CRITICA', 'El mismo documento despacha dos veces la misma serie y metraje'],
   DISPONIBLE_Y_BAJA:         ['CRITICA', 'CRITICA', 'Serie disponible y dada de baja al mismo tiempo'],
   INTENTO_SALDO_NEGATIVO:    ['CRITICA', 'CRITICA', 'Se intentó registrar un movimiento que dejaba saldo negativo'],
-  // Conciliación
-  DUPLICADO_ACCIDENTAL:      ['CONCILIACION', 'ALTA', 'Registro idéntico a otro de la misma serie (no se generó movimiento)'],
-  POSIBLE_DUPLICADO:         ['CONCILIACION', 'MEDIA', 'Registro muy similar a otro de la misma serie'],
-  SERIE_EN_DOS_BODEGAS:      ['CONCILIACION', 'ALTA', 'La serie aparece en otra bodega mientras conserva saldo en la anterior'],
-  REAPARICION_CON_SALDO:     ['CONCILIACION', 'ALTA', 'La serie reaparece con ingreso mientras aún tenía saldo; no se generó ingreso'],
-  TRASLADO_INFERIDO:         ['CONCILIACION', 'BAJA', 'La serie reaparece con el mismo saldo en otra bodega: se registró traslado inferido'],
-  DEVOLUCION_INFERIDA:       ['CONCILIACION', 'MEDIA', 'Reingreso posterior a un despacho interpretado como devolución'],
-  DEVOLUCION_SIN_REFERENCIA: ['CONCILIACION', 'ALTA', 'Devolución sin despacho relacionado'],
-  ESTADO_DESPACHADA_SIN_SALIDA: ['CONCILIACION', 'ALTA', 'Estado DESPACHADA sin metraje de salida'],
-  DESPACHO_RUTA_STOCK:       ['CONCILIACION', 'MEDIA', 'Serie despachada con ruta "STOCK BODEGA"'],
-  PRESTADA_SIN_RESPONSABLE:  ['CONCILIACION', 'ALTA', 'Préstamo sin responsable identificado'],
+  // Revisión
+  DUPLICADO_ACCIDENTAL:      ['REVISION', 'ALTA', 'Registro idéntico a otro de la misma serie (no se generó movimiento)'],
+  POSIBLE_DUPLICADO:         ['REVISION', 'MEDIA', 'Registro muy similar a otro de la misma serie'],
+  SERIE_EN_DOS_BODEGAS:      ['REVISION', 'ALTA', 'La serie aparece en otra bodega mientras conserva saldo en la anterior'],
+  REAPARICION_CON_SALDO:     ['REVISION', 'ALTA', 'La serie reaparece con ingreso mientras aún tenía saldo; no se generó ingreso'],
+  TRASLADO_INFERIDO:         ['REVISION', 'BAJA', 'La serie reaparece con el mismo saldo en otra bodega: se registró traslado inferido'],
+  DEVOLUCION_INFERIDA:       ['REVISION', 'MEDIA', 'Reingreso posterior a un despacho interpretado como devolución'],
+  DEVOLUCION_SIN_REFERENCIA: ['REVISION', 'ALTA', 'Devolución sin despacho relacionado'],
+  ESTADO_DESPACHADA_SIN_SALIDA: ['REVISION', 'ALTA', 'Estado DESPACHADA sin metraje de salida'],
+  DESPACHO_RUTA_STOCK:       ['REVISION', 'MEDIA', 'Serie despachada con ruta "STOCK BODEGA"'],
+  PRESTADA_SIN_RESPONSABLE:  ['REVISION', 'ALTA', 'Préstamo sin responsable identificado'],
   PRESTAMO_SIN_FECHA_LIMITE: ['PRESTAMO', 'MEDIA', 'Préstamo sin fecha límite de devolución'],
   PRESTAMO_VENCIDO:          ['PRESTAMO', 'ALTA', 'Préstamo vencido'],
   PRESTAMO_POR_VENCER:       ['PRESTAMO', 'BAJA', 'Préstamo próximo a vencer'],
   PRESTAMO_DIFERENCIA:       ['PRESTAMO', 'MEDIA', 'Diferencia entre metraje prestado y devuelto'],
   PRESTADA_REAPARECE_DISPONIBLE: ['PRESTAMO', 'ALTA', 'Serie prestada aparece disponible sin devolución documentada'],
-  OBS_DEVOLUCION_SIN_METRAJE:['CONCILIACION', 'MEDIA', 'Observación de devolución sin metraje'],
-  SOBRANTE_SIN_CANTIDAD:     ['CONCILIACION', 'MEDIA', 'Sobrante declarado sin cantidad'],
-  DOCUMENTO_VACIO_SALIDA:    ['CONCILIACION', 'MEDIA', 'Movimiento de salida sin documento'],
-  CONTRATISTA_NO_REGISTRADO: ['CONCILIACION', 'BAJA', 'Contratista no registrado en catálogo'],
-  DEPARTAMENTO_VACIO:        ['CONCILIACION', 'BAJA', 'Departamento vacío o no válido'],
-  ESTADO_NO_COINCIDE:        ['CONCILIACION', 'MEDIA', 'El estado no coincide con el tipo de movimiento'],
-  POSIBLE_TRASLADO:          ['CONCILIACION', 'BAJA', 'El destino es otra bodega: posible traslado registrado como despacho'],
-  SERIE_DERIVADA_POSIBLE:    ['CONCILIACION', 'INFO', 'Posible serie derivada / familia de rollo (no fusionada)'],
-  SERIE_VACIA:               ['CONCILIACION', 'ALTA', 'Registro sin serie'],
-  REGISTRO_INCOMPLETO:       ['CONCILIACION', 'ALTA', 'Registro sin datos suficientes para generar movimientos'],
-  SALDO_BAJO:                ['CONCILIACION', 'BAJA', 'Rollo con saldo menor al umbral configurado'],
+  OBS_DEVOLUCION_SIN_METRAJE:['REVISION', 'MEDIA', 'Observación de devolución sin metraje'],
+  SOBRANTE_SIN_CANTIDAD:     ['REVISION', 'MEDIA', 'Sobrante declarado sin cantidad'],
+  DOCUMENTO_VACIO_SALIDA:    ['REVISION', 'MEDIA', 'Movimiento de salida sin documento'],
+  CONTRATISTA_NO_REGISTRADO: ['REVISION', 'BAJA', 'Contratista no registrado en catálogo'],
+  DEPARTAMENTO_VACIO:        ['REVISION', 'BAJA', 'Departamento vacío o no válido'],
+  ESTADO_NO_COINCIDE:        ['REVISION', 'MEDIA', 'El estado no coincide con el tipo de movimiento'],
+  POSIBLE_TRASLADO:          ['REVISION', 'BAJA', 'El destino es otra bodega: posible traslado registrado como despacho'],
+  SERIE_DERIVADA_POSIBLE:    ['REVISION', 'INFO', 'Posible serie derivada / familia de rollo (no fusionada)'],
+  SERIE_VACIA:               ['REVISION', 'ALTA', 'Registro sin serie'],
+  REGISTRO_INCOMPLETO:       ['REVISION', 'ALTA', 'Registro sin datos suficientes para generar movimientos'],
+  SALDO_BAJO:                ['REVISION', 'BAJA', 'Rollo con saldo menor al umbral configurado'],
   // Formato
   METRAJE_AMBIGUO:           ['FORMATO', 'MEDIA', 'Metraje con separador ambiguo'],
   METRAJE_TEXTO:             ['FORMATO', 'BAJA', 'Metraje almacenado como texto'],

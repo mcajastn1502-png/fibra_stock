@@ -167,7 +167,7 @@ FS.Catalog = function (rows) {
 /*  ALERTAS                                                           */
 /* ================================================================== */
 FS.mkAlert = function (tipo, o) {
-  var def = FS.ALERTAS[tipo] || ['CONCILIACION', 'MEDIA', tipo];
+  var def = FS.ALERTAS[tipo] || ['REVISION', 'MEDIA', tipo];
   o = o || {};
   var clave = [tipo, o.id_serie || '', o.id_movimiento || '', o.fila_origen || '', o.campo || '', o.claveExtra || ''].join('|');
   return {
@@ -359,13 +359,13 @@ FS.processMatrix = function (rows, opts) {
       if (IN !== null && IN !== undefined) {
         if (!st.tuvoIngreso && pos === 0) {
           addMov({ tipo: 'INGRESO_INICIAL', metraje: IN, bodega_origen: '', bodega_destino: s.bodega,
-            estado_resultante: OUT ? estadoFila : (estadoFila === 'DESPACHADA' ? 'EN_CONCILIACION' : estadoFila),
+            estado_resultante: OUT ? estadoFila : (estadoFila === 'DESPACHADA' ? 'EN_REVISION' : estadoFila),
             regla_aplicada: 'PRIMERA_APARICION_CON_INGRESO', confianza: s.confianza_metraje });
           st.saldo += IN; st.tuvoIngreso = true;
         } else if (st.saldo <= 0 && (st.ultimoTipo === 'DESPACHO' || st.ultimoTipo === 'PRESTAMO')) {
           var esPrest = st.ultimoTipo === 'PRESTAMO', ref = st.ultimoDesp;
           var dm = addMov({ tipo: esPrest ? 'DEVOLUCION_DE_PRESTAMO' : 'DEVOLUCION', metraje: IN, bodega_origen: ref ? ref.bodega_destino : '',
-            bodega_destino: s.bodega, estado_resultante: OUT ? estadoFila : (estadoFila === 'DESPACHADA' ? 'EN_CONCILIACION' : estadoFila),
+            bodega_destino: s.bodega, estado_resultante: OUT ? estadoFila : (estadoFila === 'DESPACHADA' ? 'EN_REVISION' : estadoFila),
             documento_ref: ref ? ref.documento : '', id_vinculado: ref ? ref.id_movimiento : '',
             regla_aplicada: 'REAPARICION_CON_INGRESO_TRAS_SALIDA', confianza: 'MEDIA' });
           st.saldo += IN; s.clasificacion_repeticion = 'REPETICION_POR_DEVOLUCION';
@@ -388,7 +388,7 @@ FS.processMatrix = function (rows, opts) {
             var esTras = st.bodega && s.bodega && s.bodega !== st.bodega;
             var tm = addMov({ tipo: esTras ? 'TRASLADO_ENTRE_BODEGAS' : 'CAMBIO_DE_ESTADO', metraje: esTras ? IN : 0, signo: 0,
               bodega_origen: st.bodega, bodega_destino: s.bodega,
-              estado_resultante: OUT ? estadoFila : (estadoFila === 'DESPACHADA' ? 'EN_CONCILIACION' : estadoFila),
+              estado_resultante: OUT ? estadoFila : (estadoFila === 'DESPACHADA' ? 'EN_REVISION' : estadoFila),
               regla_aplicada: esTras ? 'REAPARICION_MISMO_SALDO_OTRA_BODEGA' : 'REGISTRO_POSTERIOR_MISMO_SALDO', confianza: esTras ? 'MEDIA' : 'ALTA' });
             if (esTras) alert('TRASLADO_INFERIDO', mix(base, { id_movimiento: tm.id_movimiento, campo: 'BODEGA', encontrado: st.bodega + ' → ' + s.bodega, esperado: 'Documento de traslado' }));
             if (esTras) s.clasificacion_repeticion = 'REPETICION_POR_TRASLADO';
@@ -396,10 +396,10 @@ FS.processMatrix = function (rows, opts) {
           } else {
           // la serie reaparece con ingreso pero aún tenía saldo (o nunca tuvo ingreso): no se inventa movimiento
           var cm = addMov({ tipo: 'CAMBIO_DE_ESTADO', metraje: 0, signo: 0, bodega_origen: st.bodega, bodega_destino: s.bodega,
-            estado_resultante: OUT ? estadoFila : (estadoFila === 'DESPACHADA' ? 'EN_CONCILIACION' : estadoFila),
+            estado_resultante: OUT ? estadoFila : (estadoFila === 'DESPACHADA' ? 'EN_REVISION' : estadoFila),
             regla_aplicada: 'REAPARICION_SIN_MOVIMIENTO_DE_METRAJE', confianza: 'BAJA' });
           alert('REAPARICION_CON_SALDO', mix(base, { id_movimiento: cm.id_movimiento, campo: 'MTS INGRESO', encontrado: IN + ' m declarados en ' + s.bodega,
-            esperado: 'Saldo calculado ' + st.saldo + ' m en ' + (st.bodega || 's/b'), detalle: 'Conciliar: ¿devolución, traslado o corrección del despacho anterior?' }));
+            esperado: 'Saldo calculado ' + st.saldo + ' m en ' + (st.bodega || 's/b'), detalle: 'revisar: ¿devolución, traslado o corrección del despacho anterior?' }));
           if (st.bodega && s.bodega !== st.bodega && st.saldo > 0)
             alert('SERIE_EN_DOS_BODEGAS', mix(base, { id_movimiento: cm.id_movimiento, campo: 'BODEGA', encontrado: st.bodega + ' y ' + s.bodega, esperado: 'Una sola bodega' }));
         }
@@ -435,7 +435,7 @@ FS.processMatrix = function (rows, opts) {
           if (!resp) alert('PRESTADA_SIN_RESPONSABLE', mix(base, { id_movimiento: sm.id_movimiento, campo: 'RESPONSABLE', encontrado: '(vacío)', esperado: 'Persona responsable' }));
         }
       } else if (estadoFila === 'DESPACHADA') {
-        alert('ESTADO_DESPACHADA_SIN_SALIDA', mix(base, { id_movimiento: generated.length ? generated[generated.length - 1].id_movimiento : '', campo: 'MTS SALIDA', encontrado: '(vacío)', esperado: 'Metraje despachado', detalle: 'Saldo queda pendiente de conciliación' }));
+        alert('ESTADO_DESPACHADA_SIN_SALIDA', mix(base, { id_movimiento: generated.length ? generated[generated.length - 1].id_movimiento : '', campo: 'MTS SALIDA', encontrado: '(vacío)', esperado: 'Metraje despachado', detalle: 'Saldo queda pendiente de Revisión' }));
       } else if (estadoFila === 'PRESTADA') {
         alert('ESTADO_NO_COINCIDE', mix(base, { campo: 'ESTADO', encontrado: 'PRESTADA sin metraje de salida', esperado: 'Metraje prestado' }));
       }
@@ -521,10 +521,10 @@ FS.computeSeries = function (data) {
   (data.alertas || []).forEach(function (a) {
     if (a.estado === 'ABIERTA' || a.estado === 'EN_REVISION') {
       var o = openAlerts[a.id_serie] = openAlerts[a.id_serie] || { n: 0, conc: 0, crit: 0 };
-      o.n++; if (a.categoria === 'CRITICA') o.crit++; if (a.categoria === 'CONCILIACION' || a.categoria === 'CRITICA') o.conc++;
+      o.n++; if (a.categoria === 'CRITICA') o.crit++; if (a.categoria === 'REVISION' || a.categoria === 'CRITICA') o.conc++;
     }
   });
-  (data.prestamos || []).forEach(function (p) { if (['ACTIVO', 'VENCIDO', 'DEVUELTO_PARCIAL', 'PENDIENTE_DE_CONCILIACION', ''].indexOf(p.estado) >= 0 && !p.id_mov_devolucion) loansOpen[p.id_serie] = p; });
+  (data.prestamos || []).forEach(function (p) { if (['ACTIVO', 'VENCIDO', 'DEVUELTO_PARCIAL', 'PENDIENTE_DE_REVISION', ''].indexOf(p.estado) >= 0 && !p.id_mov_devolucion) loansOpen[p.id_serie] = p; });
   var staging = {}; (data.staging || []).forEach(function (s) { if (s.serie_normalizada) staging[s.serie_normalizada] = s; });
 
   var groups = {};
@@ -566,12 +566,12 @@ FS.computeSeries = function (data) {
     var estadoSaldo;
     if (!tieneIngreso && salidas > 0) estadoSaldo = 'SIN_INGRESO_REGISTRADO';
     else if (saldo < 0) estadoSaldo = 'NEGATIVO';
-    else if (oa.conc > 0) estadoSaldo = 'PENDIENTE_CONCILIACION';
+    else if (oa.conc > 0) estadoSaldo = 'PENDIENTE_REVISION';
     else if (conf !== 'ALTA') estadoSaldo = 'ESTIMADO';
     else estadoSaldo = 'COMPLETO';
     // estado actual derivado (nunca oculta negativos)
     var e = estado || 'DISPONIBLE';
-    if (saldo < 0) e = 'EN_CONCILIACION';
+    if (saldo < 0) e = 'EN_REVISION';
     else if (loansOpen[k] && saldo <= 0) e = 'PRESTADA';
     else if (t.baja > 0 && saldo === 0) e = 'BAJA';
     else if (saldo === 0 && (e === 'DISPONIBLE' || e === 'RESERVADA' || e === 'DEVUELTA')) e = 'AGOTADA';
@@ -587,7 +587,7 @@ FS.computeSeries = function (data) {
       consumo_calculado: U.round(t.despachado - t.devuelto, 2), saldo_actual: saldo, estado_actual: e,
       bodega_actual: bodega, ubicacion_actual: ubic, reservado_para: reservado, fecha_ultimo_mov: ultimo,
       num_movimientos: all.length, nivel_confiabilidad: conf, estado_saldo: estadoSaldo,
-      estado_conciliacion: oa.conc ? 'PENDIENTE' : 'CONCILIADA', alertas_abiertas: oa.n
+      estado_REVISION: oa.conc ? 'PENDIENTE' : 'CONCILIADA', alertas_abiertas: oa.n
     };
   }).sort(function (a, b) { return a.id_serie < b.id_serie ? -1 : 1; });
 };
@@ -610,7 +610,7 @@ FS.computeLoans = function (prestamos, movs, today) {
     if (q.estado_manual) q.estado = q.estado_manual;
     else if (dev > 0 && dev >= pr) q.estado = 'DEVUELTO_COMPLETO';
     else if (dev > 0) q.estado = 'DEVUELTO_PARCIAL';
-    else if (!q.fecha_limite || !q.responsable) q.estado = 'PENDIENTE_DE_CONCILIACION';
+    else if (!q.fecha_limite || !q.responsable) q.estado = 'PENDIENTE_DE_REVISION';
     else if (q.fecha_limite < today) q.estado = 'VENCIDO';
     else q.estado = 'ACTIVO';
     return q;
@@ -632,7 +632,7 @@ FS.dynamicAlerts = function (data, today, params) {
   (data.movimientos || []).filter(FS.isMovVigente).forEach(function (m) { if (!lastMov[m.id_serie] || m.fecha >= lastMov[m.id_serie].fecha) lastMov[m.id_serie] = m; });
   (data.prestamos || []).forEach(function (p) {
     var b = { id_serie: p.id_serie, id_movimiento: p.id_mov_prestamo, claveExtra: p.id_prestamo };
-    var abierto = ['ACTIVO', 'VENCIDO', 'PENDIENTE_DE_CONCILIACION'].indexOf(p.estado) >= 0;
+    var abierto = ['ACTIVO', 'VENCIDO', 'PENDIENTE_DE_REVISION'].indexOf(p.estado) >= 0;
     if (abierto && !p.fecha_limite) add('PRESTAMO_SIN_FECHA_LIMITE', mixin(b, { campo: 'FECHA LIMITE', encontrado: '(vacío)', esperado: 'Fecha límite', detalle: 'Préstamo ' + p.id_prestamo + ' de ' + p.metraje_prestado + ' m' }));
     if (abierto && !p.responsable) add('PRESTADA_SIN_RESPONSABLE', mixin(b, { campo: 'RESPONSABLE', encontrado: '(vacío)', esperado: 'Responsable' }));
     if (p.estado === 'VENCIDO') add('PRESTAMO_VENCIDO', mixin(b, { campo: 'FECHA LIMITE', encontrado: p.fecha_limite, esperado: 'Devolución antes de ' + p.fecha_limite, detalle: U.diffDays(today, p.fecha_limite) + ' días de retraso — ' + p.responsable }));
@@ -736,13 +736,13 @@ FS.dashboard = function (data, f, today, params) {
   var umbral = +params.UMBRAL_SALDO_BAJO_M || 300;
   var despachos = movs.filter(function (m) { return m.tipo === 'DESPACHO'; });
   var devoluciones = movs.filter(function (m) { return ['DEVOLUCION', 'DEVOLUCION_DE_PRESTAMO', 'SOBRANTE_DE_OBRA'].indexOf(m.tipo) >= 0; });
-  var prestamosPendientes = loans.filter(function (p) { return ['ACTIVO', 'VENCIDO', 'PENDIENTE_DE_CONCILIACION', 'DEVUELTO_PARCIAL'].indexOf(p.estado) >= 0; });
+  var prestamosPendientes = loans.filter(function (p) { return ['ACTIVO', 'VENCIDO', 'PENDIENTE_DE_REVISION', 'DEVUELTO_PARCIAL'].indexOf(p.estado) >= 0; });
   var malEstado = series.filter(function (s) { return s.estado_actual === 'MAL_ESTADO'; });
   var activos = series.filter(function (s) { return s.saldo_actual > 0; });
   var negativos = series.filter(function (s) { return s.saldo_actual < 0; });
-  var porConciliar = series.filter(function (s) { return s.estado_conciliacion === 'PENDIENTE'; });
+  var porrevisar = series.filter(function (s) { return s.estado_REVISION === 'PENDIENTE'; });
   var vencidos = loans.filter(function (p) { return p.estado === 'VENCIDO'; });
-  var sinFecha = loans.filter(function (p) { return p.estado === 'PENDIENTE_DE_CONCILIACION'; });
+  var sinFecha = loans.filter(function (p) { return p.estado === 'PENDIENTE_DE_REVISION'; });
   var saldoBajo = disp.filter(function (s) { return s.saldo_actual < umbral; });
   var reservaMovs = FS.ultimoMovEstado(data.movimientos || []);
   var reservadasDestino = series.filter(function (s) {
@@ -756,16 +756,16 @@ FS.dashboard = function (data, f, today, params) {
   });
   var kpi = {
     metros_disponibles: sum(dispOk, pos),
-    metros_disponibles_por_conciliar: sum(dispPend, pos),
+    metros_disponibles_por_revisar: sum(dispPend, pos),
     metros_despachados: sum(despachos, function (m) { return U.num(m.metraje); }),
     metros_devueltos: sum(devoluciones, function (m) { return U.num(m.metraje); }),
     metros_prestados: sum(prestamosPendientes, function (p) { return U.num(p.metraje_prestado) - U.num(p.metraje_devuelto); }),
     metros_mal_estado: sum(malEstado, pos),
     metros_reservados: sum(reservadasDestino, pos),
-    metros_en_conciliacion: sum(series.filter(function (s) { return s.estado_saldo === 'PENDIENTE_CONCILIACION' && s.saldo_actual > 0; }), pos),
+    metros_en_REVISION: sum(series.filter(function (s) { return s.estado_saldo === 'PENDIENTE_REVISION' && s.saldo_actual > 0; }), pos),
     rollos_activos: activos.length,
     series_saldo_negativo: negativos.length,
-    series_pendientes_conciliacion: porConciliar.length,
+    series_pendientes_REVISION: porrevisar.length,
     prestamos_vencidos: vencidos.length,
     prestamos_sin_fecha: sinFecha.length,
     rollos_saldo_bajo: saldoBajo.length,
@@ -789,11 +789,11 @@ FS.dashboard = function (data, f, today, params) {
       fecha_prestamo: p.fecha_prestamo || '', fecha_limite: p.fecha_limite || '', estado: p.estado || '' };
   };
   var detalles = {
-    disponible_confirmado: dispOk.map(detalleSerie), disponible_conciliar: dispPend.map(detalleSerie),
+    disponible_confirmado: dispOk.map(detalleSerie), disponible_revisar: dispPend.map(detalleSerie),
     despachado_periodo: despachos.map(detalleMovimiento), devuelto_periodo: devoluciones.map(detalleMovimiento),
     prestado_pendiente: prestamosPendientes.map(detallePrestamo), reservado: reservas,
     mal_estado: malEstado.map(detalleSerie), rollos_activos: activos.map(detalleSerie), series_negativas: negativos.map(detalleSerie),
-    series_conciliar: porConciliar.map(detalleSerie), prestamos_vencidos: vencidos.map(detallePrestamo),
+    series_revisar: porrevisar.map(detalleSerie), prestamos_vencidos: vencidos.map(detallePrestamo),
     prestamos_sin_fecha: sinFecha.map(detallePrestamo), saldo_bajo: saldoBajo.map(detalleSerie)
   };
   var hilosBucket = function (s) { var h = +s.hilos; return FS.HILOS_STD.indexOf(h) >= 0 ? h + 'H' : (h ? h + 'H' : 'S/D'); };
@@ -879,12 +879,12 @@ FS.report = function (data, tipo, f, today, params) {
     var by = function (fn) {
       var o = {};
       series.forEach(function (s) {
-        var k = fn(s) || '(sin dato)', r = o[k] = o[k] || { grupo: k, rollos: 0, disponible: 0, reservado: 0, prestado: 0, mal_estado: 0, en_conciliacion: 0, negativo: 0 };
+        var k = fn(s) || '(sin dato)', r = o[k] = o[k] || { grupo: k, rollos: 0, disponible: 0, reservado: 0, prestado: 0, mal_estado: 0, en_REVISION: 0, negativo: 0 };
         if (s.saldo_actual > 0) r.rollos++;
         if (s.estado_actual === 'DISPONIBLE') r.disponible += pos(s);
         if (s.estado_actual === 'RESERVADA') r.reservado += pos(s);
         if (s.estado_actual === 'MAL_ESTADO') r.mal_estado += pos(s);
-        if (s.estado_saldo === 'PENDIENTE_CONCILIACION') r.en_conciliacion += pos(s);
+        if (s.estado_saldo === 'PENDIENTE_REVISION') r.en_REVISION += pos(s);
         if (U.num(s.saldo_actual) < 0) r.negativo += U.num(s.saldo_actual);
         r.prestado += U.num(s.total_prestado) - U.num(s.total_dev_prestamo);
       });

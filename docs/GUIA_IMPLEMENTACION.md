@@ -17,10 +17,10 @@ Al pasar la matriz por el motor de reglas (el mismo código que corre en Apps Sc
 | Series (rollos) | 361 (359 + 2 identificadores temporales `SIN-SERIE-F4`, `SIN-SERIE-F9`) |
 | Movimientos generados | 621 → 349 ingresos iniciales, 240 despachos, 15 devoluciones inferidas, 7 préstamos, 10 cambios de estado / registros posteriores |
 | Series repetidas | 24 filas: 15 por devolución, 6 con cambio de bodega, 2 registros posteriores, 1 por movimiento; **0 duplicados exactos** |
-| Saldo de las series | 182 COMPLETO · 165 PENDIENTE DE CONCILIACIÓN · 4 NEGATIVO · 10 SIN INGRESO REGISTRADO |
-| Alertas | 359 → 32 críticas, 254 de conciliación, 56 de formato, 7 de préstamos, 10 tareas de validación |
+| Saldo de las series | 182 COMPLETO · 165 PENDIENTE DE Revisión · 4 NEGATIVO · 10 SIN INGRESO REGISTRADO |
+| Alertas | 359 → 32 críticas, 254 de Revisión, 56 de formato, 7 de préstamos, 10 tareas de validación |
 | Disponible confirmado | 78 403 m (BQZ3 72 684 · BQUS 3 714 · BQEF 2 005) |
-| Disponible por conciliar | 22 209 m |
+| Disponible por revisar | 22 209 m |
 | Reservado | 91 769 m · En mal estado: 18 548 m |
 
 Hallazgos que condicionan el diseño:
@@ -30,7 +30,7 @@ Hallazgos que condicionan el diseño:
 3. **La columna `CERTICACION` no contiene fechas**: tiene el usuario que certificó (JQUISPE 87, JRRODRIGUEZ 25…) y a veces texto (“SOBRANTE”, “DEVUELVE 3340 Y SALE 3340”). Las fechas de certificación aparecen en `OBSERVACION` o `CONTRATISTA` (9 casos). Se separan en `certificado_por` y `fecha_certificacion`.
 4. **`CONTRATISTA` mezcla contratistas reales con códigos de bodega destino** (BQZ2 43 filas, BPRG, BCUE, BOIM…), ciudades, personas y fechas. Se clasifican por **clase** sin perder el valor original; los despachos a otra bodega generan alerta “posible traslado” (61).
 5. **`DEPARTAMETO` contiene personas** (CRISTIAN CATOTA 23, DIEGO SUQUI 10, IVAN CHAVEZ…), observaciones (“FIBRA EN MAL ESTADO”, “ATORIZO 1000 MTRS”) y variantes (PANTA/PLAMTA EXTERNA, SOTERAMIENTO). 91 filas vacías.
-6. **33 filas con estado DESPACHADA sin metraje de salida**: su saldo no se puede afirmar → quedan como `PENDIENTE_CONCILIACION` (no se asume que salió todo).
+6. **33 filas con estado DESPACHADA sin metraje de salida**: su saldo no se puede afirmar → quedan como `PENDIENTE_REVISION` (no se asume que salió todo).
 7. **24 filas con hilos distintos a la descripción** (p. ej. A232689 dice 48 H pero el código describe 144 F.O.) y 22 con span distinto.
 
 ---
@@ -66,7 +66,7 @@ Límites a tener en cuenta (Apps Script, cuentas Workspace): 6 min por ejecució
 | `MATRIZ_ORIGINAL` | fila | La matriz pegada tal cual. Nunca se modifica (ediciones manuales se revierten). |
 | `MATRIZ_NORMALIZADA` | fila | Cada fila con **valor original, valor normalizado, regla aplicada y confianza** (fecha, metraje, depto, contratista, certificación), clasificación de repetición y riesgo de duplicado, y los movimientos que generó. |
 | `ARTICULOS` | codigo | código, familia, prefijo de bodega, descripción original/normalizada, hilos, span, tipo de cable, fabricante, unidad, stock mínimo, activo. |
-| `SERIES` | id_serie | **Calculada**: serie original/normalizada, serie madre, código, metraje inicial, totales por tipo, consumo, saldo, estado, bodega y ubicación actual, reservado para, último movimiento, confiabilidad, tipo de saldo, estado de conciliación, alertas abiertas. |
+| `SERIES` | id_serie | **Calculada**: serie original/normalizada, serie madre, código, metraje inicial, totales por tipo, consumo, saldo, estado, bodega y ubicación actual, reservado para, último movimiento, confiabilidad, tipo de saldo, estado de Revisión, alertas abiertas. |
 | `MOVIMIENTOS` | id_movimiento | id, serie, código, serie derivada, fecha, tipo, metraje, signo, bodega origen/destino, ubicación, estado resultante, proyecto/ruta, depto (orig/norm), contratista (orig/norm), responsable, documento, documento de referencia, usuario, creado en, observación (orig/norm), evidencia, origen (IMPORTACION/APP), fila de origen, regla aplicada, confianza, estado de registro (ABIERTO/CERRADO/ANULADO), aprobación, aprobado por, id vinculado. |
 | `PRESTAMOS` | id_prestamo | serie, código, metraje prestado/devuelto, diferencia, responsable, contratista, depto, proyecto, fechas (préstamo, límite, devolución), estado calculado, estado manual, documento, observaciones, movimientos vinculados. |
 | `SOBRANTES` | id_sobrante | serie, proyecto original, documento de despacho, despachado/utilizado/sobrante/devuelto, fecha, condición, bodega receptora, nuevo proyecto, estado (PENDIENTE_CUANTIFICAR/DECLARADO/RECIBIDO/RECHAZADO). |
@@ -103,13 +103,13 @@ Los traslados no cambian el saldo de la serie: cambian su **bodega actual** (el 
 |---|---|
 | `SIN_INGRESO_REGISTRADO` | tiene salidas pero ningún ingreso |
 | `NEGATIVO` | saldo < 0 |
-| `PENDIENTE_CONCILIACION` | tiene alertas críticas o de conciliación abiertas |
+| `PENDIENTE_REVISION` | tiene alertas críticas o de Revisión abiertas |
 | `ESTIMADO` | algún movimiento fue inferido (confianza media/baja) |
 | `COMPLETO` | todo lo anterior en falso |
 
-El dashboard separa **Disponible confirmado** (COMPLETO/ESTIMADO) de **Disponible por conciliar**.
+El dashboard separa **Disponible confirmado** (COMPLETO/ESTIMADO) de **Disponible por revisar**.
 
-**Estado actual** = estado resultante del último movimiento, corregido por el saldo: saldo < 0 → EN_CONCILIACION; préstamo abierto y saldo 0 → PRESTADA; baja y saldo 0 → BAJA; saldo 0 con estado disponible/reservado → AGOTADA; saldo > 0 tras un despacho parcial → DISPONIBLE.
+**Estado actual** = estado resultante del último movimiento, corregido por el saldo: saldo < 0 → EN_REVISION; préstamo abierto y saldo 0 → PRESTADA; baja y saldo 0 → BAJA; saldo 0 con estado disponible/reservado → AGOTADA; saldo > 0 tras un despacho parcial → DISPONIBLE.
 
 ---
 
@@ -122,7 +122,7 @@ El dashboard separa **Disponible confirmado** (COMPLETO/ESTIMADO) de **Disponibl
 3. Si reaparece con el **mismo saldo**: en la misma bodega → registro posterior; en otra bodega → `TRASLADO_ENTRE_BODEGAS` inferido.
 4. Si reaparece con **otro metraje mientras aún tenía saldo** → no se inventa movimiento; alerta “reaparición con saldo” (y “serie en dos bodegas” si cambió de bodega).
 5. Si tiene `MTS SALIDA` → `DESPACHO` (o `PRESTAMO` si el estado es PRESTADA), validando saldo, documento, departamento, ruta y contratista.
-6. Estado DESPACHADA sin salida → alerta y saldo pendiente de conciliación.
+6. Estado DESPACHADA sin salida → alerta y saldo pendiente de Revisión.
 7. Observaciones de texto libre → tareas de validación (nunca movimientos automáticos).
 8. Filas idénticas → no generan movimiento y se marcan como duplicado accidental.
 
@@ -130,7 +130,7 @@ El dashboard separa **Disponible confirmado** (COMPLETO/ESTIMADO) de **Disponibl
 
 - **Ingreso**: serie nueva + código existente + metraje + bodega. Si la serie ya existe se rechaza y se sugiere INGRESO_ADICIONAL, DEVOLUCIÓN o SOBRANTE.
 - **Despacho**: obligatorio documento, departamento y ruta (no puede ser “STOCK BODEGA”); la serie debe estar en la bodega de origen, no en MAL_ESTADO/BAJA/AGOTADA, sin saldo negativo; si el metraje supera el saldo se **rechaza y se crea alerta crítica**.
-- **Devolución**: se elige el despacho original (o “sin referencia” → alerta de conciliación). Si la devolución supera lo pendiente del despacho se rechaza con alerta crítica. Se muestra en vivo: *despachado 1 000 m · devuelto 376 m → consumo efectivo 624 m*.
+- **Devolución**: se elige el despacho original (o “sin referencia” → alerta de Revisión). Si la devolución supera lo pendiente del despacho se rechaza con alerta crítica. Se muestra en vivo: *despachado 1 000 m · devuelto 376 m → consumo efectivo 624 m*.
 - **Baja y ajuste**: quedan `PENDIENTE` hasta que un supervisor (distinto de quien registró) los aprueba; al aprobar se vuelve a validar el saldo.
 - **Correcciones**: un movimiento cerrado no se edita; el administrador lo **anula** con motivo y se registra uno nuevo. Todo queda en la bitácora.
 
@@ -159,9 +159,9 @@ En la operación diaria **no se bloquea una serie repetida** si el usuario elige
 
 Filtros: rango de fechas, bodega, código/familia, descripción, hilos, span, estado, departamento, contratista, ruta. Los filtros de serie (bodega, código, hilos, span, estado) afectan stock y flujos; los de movimiento (fechas, depto, contratista, ruta) afectan flujos y consumo.
 
-Indicadores: disponible confirmado, disponible por conciliar, despachado y devuelto del periodo, prestado pendiente, reservado, mal estado, rollos activos, series con saldo negativo, series por conciliar, préstamos vencidos, préstamos sin fecha límite, rollos con saldo bajo.
+Indicadores: disponible confirmado, disponible por revisar, despachado y devuelto del periodo, prestado pendiente, reservado, mal estado, rollos activos, series con saldo negativo, series por revisar, préstamos vencidos, préstamos sin fecha límite, rollos con saldo bajo.
 
-Gráficos: stock por bodega e hilos (apilado confirmado/por conciliar), tendencia mensual de despachos, devoluciones y consumo efectivo, stock por código, saldo por estado, consumo por departamento, contratista y top 10 proyectos; tablas de saldos negativos, mal estado y saldo bajo. Agrupación por código → serie → hilos → span → estado normalizado, nunca solo por texto de descripción.
+Gráficos: stock por bodega e hilos (apilado confirmado/por revisar), tendencia mensual de despachos, devoluciones y consumo efectivo, stock por código, saldo por estado, consumo por departamento, contratista y top 10 proyectos; tablas de saldos negativos, mal estado y saldo bajo. Agrupación por código → serie → hilos → span → estado normalizado, nunca solo por texto de descripción.
 
 ---
 
@@ -176,7 +176,7 @@ Búsqueda por serie, código, descripción, hilos, bodega, documento, proyecto o
 Cada alerta guarda: tipo, categoría, severidad, serie, movimiento, fila, campo, valor encontrado, valor esperado, descripción, estado (ABIERTA → EN_REVISION → RESUELTA / DESCARTADA; RESUELTA_AUTO cuando una alerta dinámica deja de cumplirse), responsable, fecha y comentario de resolución.
 
 - **Críticas**: salida mayor al ingreso, saldo negativo, salida sin ingreso, devolución mayor al despacho, mismo documento despachando dos veces la misma serie y metraje, disponible y dado de baja, intento de dejar saldo negativo.
-- **Conciliación**: serie en dos bodegas, reaparición con saldo, devolución inferida o sin referencia, DESPACHADA sin salida, despacho con ruta STOCK BODEGA, préstamo sin responsable, observación de devolución sin metraje, sobrante sin cantidad, documento vacío, contratista no registrado, departamento vacío, estado que no coincide, posible traslado, posible serie derivada, serie vacía, registro incompleto, saldo bajo.
+- **Revisión**: serie en dos bodegas, reaparición con saldo, devolución inferida o sin referencia, DESPACHADA sin salida, despacho con ruta STOCK BODEGA, préstamo sin responsable, observación de devolución sin metraje, sobrante sin cantidad, documento vacío, contratista no registrado, departamento vacío, estado que no coincide, posible traslado, posible serie derivada, serie vacía, registro incompleto, saldo bajo.
 - **Formato**: metraje ambiguo o como texto, fecha inválida/imposible/futura/formato mixto, fecha guardada en campo de texto, certificación futura, hilos o span distintos a la descripción.
 - **Préstamos**: sin fecha límite, vencido, por vencer, diferencia prestado/devuelto, prestada que reaparece disponible.
 - **Tareas**: textos libres que mencionan préstamo, devolución o salida.
@@ -205,8 +205,8 @@ En la app, los metrajes ambiguos se rechazan (“ingréselo sin separadores de m
 
 ## 10. Préstamos y sobrantes
 
-**Préstamos**: responsable y fecha límite obligatorios (se sugiere +15 días). Estados calculados: ACTIVO, DEVUELTO_COMPLETO, DEVUELTO_PARCIAL, VENCIDO, PENDIENTE_DE_CONCILIACION (sin fecha límite o sin responsable); el supervisor puede fijar PERDIDO o CONSUMIDO_EN_OBRA. Devolución de préstamo vinculada al préstamo; no se acepta devolver más de lo prestado.
-Los 7 préstamos de la matriz quedaron en PENDIENTE_DE_CONCILIACION (ninguno tiene fecha límite). Responsables extraídos: CRISTIAN CATOTA (A260177), IVAN CHAVEZ (C261107, C261390), LUIS MORENO (C260931, de “PRESTAMO AL LUIS MORENO”), JUAN YEPEZ (C261384); sin responsable: B260094 y A261001 (“PARA IBARRA”).
+**Préstamos**: responsable y fecha límite obligatorios (se sugiere +15 días). Estados calculados: ACTIVO, DEVUELTO_COMPLETO, DEVUELTO_PARCIAL, VENCIDO, PENDIENTE_DE_REVISION (sin fecha límite o sin responsable); el supervisor puede fijar PERDIDO o CONSUMIDO_EN_OBRA. Devolución de préstamo vinculada al préstamo; no se acepta devolver más de lo prestado.
+Los 7 préstamos de la matriz quedaron en PENDIENTE_DE_REVISION (ninguno tiene fecha límite). Responsables extraídos: CRISTIAN CATOTA (A260177), IVAN CHAVEZ (C261107, C261390), LUIS MORENO (C260931, de “PRESTAMO AL LUIS MORENO”), JUAN YEPEZ (C261384); sin responsable: B260094 y A261001 (“PARA IBARRA”).
 
 **Sobrantes**: se declaran contra un despacho (sobrante, utilizado, nuevo proyecto) **sin afectar el stock**; entran al stock solo al **confirmar la recepción física** con condición (BUENA → DISPONIBLE; DAÑADA/REQUIERE_INSPECCION → MAL_ESTADO). Despachado 4 000 m y sobrante 1 600 m → consumo preliminar 2 400 m. Sobrante mayor al despacho → rechazo + alerta crítica. Los 3 “SOBRANTE” sin cantidad de la matriz (B251889, B252089, B251464) se crearon como PENDIENTE_CUANTIFICAR.
 
@@ -216,7 +216,7 @@ Los 7 préstamos de la matriz quedaron en PENDIENTE_DE_CONCILIACION (ninguno tie
 
 En la pantalla Reportes, exportables a **Excel** (SheetJS), **PDF** (impresión con estilos de impresión) y **Google Sheets** (crea una hoja nueva compartida con el usuario):
 
-- **Inventario**: por bodega, código, estado y serie, con disponible, reservado, prestado, comprometido (reservado + prestado), mal estado, en conciliación y negativo.
+- **Inventario**: por bodega, código, estado y serie, con disponible, reservado, prestado, comprometido (reservado + prestado), mal estado, en Revisión y negativo.
 - **Consumo**: por mes (despachado, devuelto, consumo), año, hilos, departamento, contratista y ruta.
 - **Excepciones**: saldos negativos, salidas sin ingreso, salidas mayores, devoluciones mayores, documentos duplicados, posibles duplicados, estados contradictorios, fechas inválidas, metrajes ambiguos, préstamos vencidos/sin fecha, sobrantes sin cuantificar, saldo bajo.
 - **Material no utilizable**: serie, código, descripción, bodega, metraje, estado, motivo, fecha, responsable y acción recomendada (≥ 1 500 m inspección/reparación, ≥ 300 m inspección, menor → baja; ajustable).
@@ -266,7 +266,7 @@ Lectura: el 144H y el 6H están casi todo **reservado**; el disponible libre no 
 | Correo de alertas | `tareaDiaria` → `enviarResumenAlertas` |
 | Reportes periódicos | `reporteSemanal` |
 | Vista Historial fibra | pantalla + `rollLife` |
-| Marcar conciliación | `estado_saldo` / `estado_conciliacion` en SERIES |
+| Marcar Revisión | `estado_saldo` / `estado_REVISION` en SERIES |
 | Evitar duplicados exactos / permitir repeticiones justificadas | `duplicateCheck` con campo justificación |
 
 ---
@@ -367,13 +367,13 @@ Mientras la aplicación está en evaluación, el equipo puede seguir anotando en
 2. Ejecute **Fibra Stock › 3. Importar matriz histórica** por última vez y confirme en **Bitácora** el resumen (*filas → movimientos, series, alertas*).
 3. Deje la hoja anterior en **solo lectura** (Compartir → todos como Lector) para que nadie siga anotando ahí.
 4. **Desconecte el origen:** **Fibra Stock › Configurar origen de la matriz** → deje el enlace vacío. Así nadie reimporta por error: una reimportación no borra lo registrado en la app, pero reinicia las alertas y los préstamos conciliados.
-5. Desde ese momento, todos los movimientos se registran y consultan en la app. Ya puede iniciar la conciliación histórica (sección 18).
+5. Desde ese momento, todos los movimientos se registran y consultan en la app. Ya puede iniciar la Revisión histórica (sección 18).
 
 ---
 
 ## 16. Ejemplos con registros reales
 
-**B260716 — el caso 4 006 m / 2 376 m.** La fila del 08-04-2026 en BQEF dice ingreso 4 006 y salida 2 376. Lectura literal del motor: *despacho de 2 376 m, quedan 1 630 m*. El 02-06-2026 la serie aparece en BQUS con 1 530 m y salida 100 m. Resultado: saldo 1 530 m, alertas “reaparición con saldo” (1 530 declarados vs 1 630 calculados: faltan 100 m) y “serie en dos bodegas”. La lectura alternativa (“se despacharon 4 006 y regresaron 2 376”, consumo 1 630) **no se puede afirmar desde la fila**: por eso queda pendiente de conciliación con la guía física, en lugar de corregirse en silencio.
+**B260716 — el caso 4 006 m / 2 376 m.** La fila del 08-04-2026 en BQEF dice ingreso 4 006 y salida 2 376. Lectura literal del motor: *despacho de 2 376 m, quedan 1 630 m*. El 02-06-2026 la serie aparece en BQUS con 1 530 m y salida 100 m. Resultado: saldo 1 530 m, alertas “reaparición con saldo” (1 530 declarados vs 1 630 calculados: faltan 100 m) y “serie en dos bodegas”. La lectura alternativa (“se despacharon 4 006 y regresaron 2 376”, consumo 1 630) **no se puede afirmar desde la fila**: por eso queda pendiente de Revisión con la guía física, en lugar de corregirse en silencio.
 
 **C260219 — despacho, devolución y nuevo despacho.**
 ```
@@ -416,7 +416,7 @@ La serie `C260219-TN01` (salida de 1 123 m el 22-08-2026 sin ingreso) queda como
 3. Formato de fecha predominante DD-MM-AAAA. Un valor como `3.156` se interpreta como miles (no hay metrajes con decimales en la matriz).
 4. Los códigos `10-` y `US-` con el mismo sufijo son el mismo artículo (familia).
 5. Las filas de 07-01-2026 en BQZ3 (88) parecen un levantamiento físico; se importaron como ingreso inicial. Si fue un inventario de apertura formal, puede reclasificarse.
-6. Los saldos de 165 series quedan **pendientes de conciliación**; el disponible confirmado es la cifra operativa hasta conciliar.
+6. Los saldos de 165 series quedan **pendientes de Revisión**; el disponible confirmado es la cifra operativa hasta revisar.
 7. Sin código de barras / QR en esta versión; la evidencia se adjunta como enlace a Drive.
 8. Apps Script: tiempos de respuesta de 1–3 s por operación y cuotas diarias de correo (100/día en cuentas gratuitas, 1 500 en Workspace).
 9. La reimportación reemplaza los movimientos importados y conserva los creados desde la app; si un movimiento de la app quedó vinculado a uno importado, revisar el vínculo tras reimportar.
@@ -424,7 +424,7 @@ La serie `C260219-TN01` (salida de 1 123 m el 22-08-2026 sin ingreso) queda como
 
 ---
 
-## 18. Recomendaciones para iniciar la conciliación histórica
+## 18. Recomendaciones para iniciar la Revisión histórica
 
 Orden sugerido (de mayor impacto a menor), usando *Alertas* filtrado por tipo:
 
@@ -439,4 +439,4 @@ Orden sugerido (de mayor impacto a menor), usando *Alertas* filtrado por tipo:
 9. **Familias de rollo** (21 sugerencias) y **hilos/span distintos a la descripción** (24 + 22): corregir el artículo o el dato.
 10. Hacer un **conteo físico por bodega** (empezando por BQZ3, que concentra 72 684 m disponibles) y registrar las diferencias como ajustes aprobados. Desde ese día, todo movimiento entra por la app y la matriz deja de editarse.
 
-Meta práctica: llevar “series por conciliar” de 179 a menos de 20 antes de usar la proyección de abastecimiento para compras.
+Meta práctica: llevar “series por revisar” de 179 a menos de 20 antes de usar la proyección de abastecimiento para compras.

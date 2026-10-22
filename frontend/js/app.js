@@ -84,7 +84,7 @@
     ['movimiento', 'Registrar movimiento', 'registrar', '+'], ['devolucion', 'Registrar devolución', 'registrar', '↩'], ['prestamos', 'Préstamos', 'leer', '⇄'],
     ['sobrantes', 'Sobrantes', 'leer', '◔', 'oculto'], ['traslado', 'Transferencias', 'registrar', '⇢'],
     ['Control'],
-    ['alertas', 'Alertas y conciliación', 'leer', '!'], ['reportes', 'Reportes', 'reportes', '▤'], ['abastecimiento', 'Abastecimiento', 'leer', '↗'],
+    ['alertas', 'Alertas y Revisión', 'leer', '!'], ['reportes', 'Reportes', 'reportes', '▤'], ['abastecimiento', 'Abastecimiento', 'leer', '↗'],
     ['Administración'],
     ['catalogos', 'Catálogos', 'leer', '☰'], ['usuarios', 'Usuarios', 'usuarios', '☺'], ['bitacora', 'Bitácora de cambios', 'bitacora', '✎']
   ];
@@ -293,7 +293,7 @@
     ];
     var detailDefs = {
       disponible_confirmado: { title: 'Disponible confirmado', rows: 'disponible_confirmado', cols: serieCols },
-      disponible_conciliar: { title: 'Disponible por conciliar', rows: 'disponible_conciliar', cols: serieCols },
+      disponible_revisar: { title: 'Disponible por revisar', rows: 'disponible_revisar', cols: serieCols },
       despachado_periodo: { title: 'Despachado en el período', rows: 'despachado_periodo', cols: movimientoCols },
       devuelto_periodo: { title: 'Devuelto en el período', rows: 'devuelto_periodo', cols: movimientoCols },
       prestado_pendiente: { title: 'Préstamo pendiente', rows: 'prestado_pendiente', cols: prestamoCols },
@@ -304,19 +304,19 @@
       mal_estado: { title: 'En mal estado', rows: 'mal_estado', cols: serieCols },
       rollos_activos: { title: 'Rollos activos', rows: 'rollos_activos', cols: serieCols },
       series_negativas: { title: 'Series con saldo negativo', rows: 'series_negativas', cols: serieCols },
-      series_conciliar: { title: 'Series por conciliar', rows: 'series_conciliar', cols: serieCols },
+      series_revisar: { title: 'Series por revisar', rows: 'series_revisar', cols: serieCols },
       prestamos_vencidos: { title: 'Préstamos vencidos', rows: 'prestamos_vencidos', cols: prestamoCols },
       prestamos_sin_fecha: { title: 'Préstamos sin fecha límite', rows: 'prestamos_sin_fecha', cols: prestamoCols },
       saldo_bajo: { title: 'Rollos con saldo bajo', rows: 'saldo_bajo', cols: serieCols }
     };
     v.innerHTML = filterBar(dashFilters, true) +
-      '<div class="kpis">' + K('Disponible confirmado', k.metros_disponibles, 'good', undefined, 'disponible_confirmado') + K('Disponible por conciliar', k.metros_disponibles_por_conciliar, 'warn', undefined, 'disponible_conciliar') +
+      '<div class="kpis">' + K('Disponible confirmado', k.metros_disponibles, 'good', undefined, 'disponible_confirmado') + K('Disponible por revisar', k.metros_disponibles_por_revisar, 'warn', undefined, 'disponible_revisar') +
       K('Despachado (periodo)', k.metros_despachados, '', undefined, 'despachado_periodo') + K('Devuelto (periodo)', k.metros_devueltos, '', undefined, 'devuelto_periodo') + K('Prestado pendiente', k.metros_prestados, '', undefined, 'prestado_pendiente') +
       K('Reservado', k.metros_reservados, '', undefined, 'reservado') + K('En mal estado', k.metros_mal_estado, 'warn', undefined, 'mal_estado') + K('Rollos activos', k.rollos_activos, '', false, 'rollos_activos') +
-      K('Series con saldo negativo', k.series_saldo_negativo, k.series_saldo_negativo ? 'crit' : '', false, 'series_negativas') + K('Series por conciliar', k.series_pendientes_conciliacion, 'warn', false, 'series_conciliar') +
+      K('Series con saldo negativo', k.series_saldo_negativo, k.series_saldo_negativo ? 'crit' : '', false, 'series_negativas') + K('Series por revisar', k.series_pendientes_REVISION, 'warn', false, 'series_revisar') +
       K('Préstamos vencidos', k.prestamos_vencidos, k.prestamos_vencidos ? 'crit' : '', false, 'prestamos_vencidos') + K('Préstamos sin fecha límite', k.prestamos_sin_fecha, k.prestamos_sin_fecha ? 'warn' : '', false, 'prestamos_sin_fecha') +
       K('Rollos con saldo bajo', k.rollos_saldo_bajo, '', false, 'saldo_bajo') + '</div>' +
-      '<div class="grid g2"><div class="card"><h3>Stock disponible por bodega<small>confirmado vs. por conciliar</small></h3><div class="chart-box"><canvas id="c1"></canvas></div></div>' +
+      '<div class="grid g2"><div class="card"><h3>Stock disponible por bodega<small>confirmado vs. por revisar</small></h3><div class="chart-box"><canvas id="c1"></canvas></div></div>' +
       '<div class="card"><h3>Stock disponible por número de hilos</h3><div class="chart-box"><canvas id="c2"></canvas></div></div></div>' +
       '<div class="card"><h3>Tendencia mensual<small>despachos, devoluciones y consumo efectivo (despachado − devuelto)</small></h3><div class="chart-box tall"><canvas id="c3"></canvas></div></div>' +
       '<div class="grid g2"><div class="card"><h3>Stock por código de artículo</h3><div class="chart-box tall"><canvas id="c4"></canvas></div></div>' +
@@ -335,13 +335,13 @@
       };
     });
     var L = function (a) { return a.map(function (x) { return x.k; }); }, V = function (a, f) { return a.map(function (x) { return x[f || 'v']; }); };
-    chart('c1', 'bar', L(d.stock_bodega), [{ label: 'Confirmado', data: V(d.stock_bodega), backgroundColor: C.a }, { label: 'Por conciliar', data: V(d.stock_bodega, 'p'), backgroundColor: C.b }], { stack: 1 });
-    chart('c2', 'bar', L(d.stock_hilos), [{ label: 'Confirmado', data: V(d.stock_hilos), backgroundColor: C.a }, { label: 'Por conciliar', data: V(d.stock_hilos, 'p'), backgroundColor: C.b }], { stack: 1 });
+    chart('c1', 'bar', L(d.stock_bodega), [{ label: 'Confirmado', data: V(d.stock_bodega), backgroundColor: C.a }, { label: 'Por revisar', data: V(d.stock_bodega, 'p'), backgroundColor: C.b }], { stack: 1 });
+    chart('c2', 'bar', L(d.stock_hilos), [{ label: 'Confirmado', data: V(d.stock_hilos), backgroundColor: C.a }, { label: 'Por revisar', data: V(d.stock_hilos, 'p'), backgroundColor: C.b }], { stack: 1 });
     var tl = d.tendencia.slice(-18);
     chart('c3', 'line', tl.map(function (x) { return x.mes; }), [{ label: 'Despachos', data: tl.map(function (x) { return x.despachos; }), borderColor: C.c, backgroundColor: C.c, tension: .25 },
       { label: 'Devoluciones', data: tl.map(function (x) { return x.devoluciones; }), borderColor: C.b, backgroundColor: C.b, tension: .25 },
       { label: 'Consumo efectivo', data: tl.map(function (x) { return x.consumo; }), borderColor: C.a, backgroundColor: C.a, borderDash: [5, 4], tension: .25 }]);
-    chart('c4', 'bar', L(d.stock_codigo), [{ label: 'Confirmado', data: V(d.stock_codigo), backgroundColor: C.a }, { label: 'Por conciliar', data: V(d.stock_codigo, 'p'), backgroundColor: C.b }], { h: 1, stack: 1 });
+    chart('c4', 'bar', L(d.stock_codigo), [{ label: 'Confirmado', data: V(d.stock_codigo), backgroundColor: C.a }, { label: 'Por revisar', data: V(d.stock_codigo, 'p'), backgroundColor: C.b }], { h: 1, stack: 1 });
     chart('c5', 'bar', L(d.stock_estado), [{ data: V(d.stock_estado), backgroundColor: d.stock_estado.map(function (x) { return x.v < 0 ? C.d : x.k === 'DISPONIBLE' ? C.a : x.k === 'MAL_ESTADO' ? C.d : x.k === 'RESERVADA' ? C.b : C.c; }) }], { h: 1 });
     chart('c6', 'bar', L(d.consumo_departamento), [{ data: V(d.consumo_departamento), backgroundColor: C.c }], { h: 1 });
     chart('c7', 'bar', L(d.consumo_contratista), [{ data: V(d.consumo_contratista), backgroundColor: C.c }], { h: 1 });
@@ -366,9 +366,9 @@
   }
   SCREENS.inventario = async function (v) {
     var r = await api('inventory', { filtros: invFilters });
-    v.innerHTML = filterBar(invFilters, false).replace('</form>', field('estado_saldo', 'Tipo de saldo', 'select', { options: ['COMPLETO', 'ESTIMADO', 'PENDIENTE_CONCILIACION', 'NEGATIVO', 'SIN_INGRESO_REGISTRADO'], value: invFilters.estado_saldo, empty: 'Todos' }) +
+    v.innerHTML = filterBar(invFilters, false).replace('</form>', field('estado_saldo', 'Tipo de saldo', 'select', { options: ['COMPLETO', 'ESTIMADO', 'PENDIENTE_REVISION', 'NEGATIVO', 'SIN_INGRESO_REGISTRADO'], value: invFilters.estado_saldo, empty: 'Todos' }) +
       field('texto', 'Texto libre', 'text', { value: invFilters.texto }) + '<div class="f" style="min-width:auto;flex:0"><label>Solo con saldo</label><input type="checkbox" name="solo_con_saldo"' + (invFilters.solo_con_saldo ? ' checked' : '') + ' style="width:auto"></div></form>') +
-      '<div class="card"><div class="note">El saldo se calcula por serie desde el historial de movimientos. <b>Tipo de saldo</b> indica si está confirmado (COMPLETO), inferido (ESTIMADO), pendiente de conciliación, negativo o sin ingreso registrado. Los negativos nunca se convierten en cero.</div><div id="tb"></div></div>';
+      '<div class="card"><div class="note">El saldo se calcula por serie desde el historial de movimientos. <b>Tipo de saldo</b> indica si está confirmado (COMPLETO), inferido (ESTIMADO), pendiente de Revisión, negativo o sin ingreso registrado. Los negativos nunca se convierten en cero.</div><div id="tb"></div></div>';
     bindFilters(v, invFilters, route_);
     table(document.getElementById('tb'), { rows: r.filas, cols: serieCols(), name: 'inventario', onRow: function (s) { location.hash = '#vida/' + encodeURIComponent(s.id_serie); } });
   };
@@ -414,7 +414,7 @@
           '<div class="meta hint">' + esc(t.id_movimiento) + ' · ' + esc(t.origen) + (t.fila_origen ? ' fila ' + esc(t.fila_origen) : '') + ' · regla ' + esc(t.regla_aplicada) + ' · confianza ' + esc(t.confianza) + ' · ' + esc(t.usuario) + (t.observacion_original ? '<br>Obs: ' + esc(t.observacion_original) : '') + '</div></li>';
       }).join('') + '</ul></div>' +
       '<div><div class="card"><h3>Consumo por despacho<small>despachado − devoluciones vinculadas</small></h3><div id="cons"></div></div>' +
-      '<div class="card"><h3>Alertas de conciliación</h3><div id="al"></div></div>' +
+      '<div class="card"><h3>Alertas de Revisión</h3><div id="al"></div></div>' +
       '<div class="card"><h3>Rutas y proyectos</h3><div class="chips">' + (L.rutas.map(function (x) { return '<span class="chip">' + esc(x) + '</span>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
       '<h3 style="margin-top:14px">Documentos asociados</h3><div class="chips">' + (L.documentos.map(function (x) { return '<a class="chip" href="#buscar/' + encodeURIComponent(x) + '">' + esc(x) + '</a>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
       '<h3 style="margin-top:14px">Observaciones</h3>' + (L.observaciones.map(function (x) { return '<div class="hint" style="margin-bottom:4px">• ' + esc(x) + '</div>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
@@ -473,7 +473,7 @@
       else if (t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA') h = codigoFields(true) + met + bod + field('ubicacion', 'Ubicación', 'select', { options: c.ubicaciones, empty: '—' }) + field('estado', 'Estado inicial', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + common + field('documento', 'Documento de ingreso', 'text') +
         (t === 'INVENTARIO_INICIAL_DE_APERTURA' ? field('certificado_por', 'Certificado por', 'text') : '') + obs;
       else if (t === 'INGRESO_ADICIONAL') h = met + bod + common + field('documento', 'Documento', 'text') + obs;
-      else if (t === 'CAMBIO_DE_ESTADO') h = field('estado', 'Nuevo estado', 'select', { options: ['RESERVADA', 'DISPONIBLE', 'MAL_ESTADO', 'EN_CONCILIACION'], value: 'RESERVADA', empty: undefined, req: 1, hint: 'DISPONIBLE libera la reserva.' }) +
+      else if (t === 'CAMBIO_DE_ESTADO') h = field('estado', 'Nuevo estado', 'select', { options: ['RESERVADA', 'DISPONIBLE', 'MAL_ESTADO', 'EN_REVISION'], value: 'RESERVADA', empty: undefined, req: 1, hint: 'DISPONIBLE libera la reserva.' }) +
         field('proyecto', 'Proyecto / ruta', 'text', { wide: 1, hint: 'Obligatorio al reservar.' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep' }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) +
         field('responsable', 'Solicitado por', 'text') + field('documento', 'N° de solicitud / documento', 'text') + common + obs;
       else if (t === 'CORTE_O_FRACCIONAMIENTO') h = met + field('serie_derivada', 'Serie derivada', 'text', { hint: 'Vacío = se genera SERIE-1-001, -002…' }) + common + obs;
@@ -514,13 +514,13 @@
       if (!s) { desp.innerHTML = '<option value="">— serie no válida —</option>'; return; }
       v.querySelector('select[name=bodega]').value = s.bodega_actual || '';
       api('dispatchesOf', { serie: s.id_serie }).then(function (r) {
-        list = r; desp.innerHTML = r.map(function (x) { return '<option value="' + x.id_movimiento + '">' + esc(x.fecha + ' · doc ' + (x.documento || 's/d') + ' · despachado ' + fmt(x.despachado) + ' m · pendiente ' + fmt(x.consumo) + ' m · ' + x.ruta) + '</option>'; }).join('') + '<option value="SIN_REFERENCIA">Sin despacho relacionado (irá a conciliación)</option>';
+        list = r; desp.innerHTML = r.map(function (x) { return '<option value="' + x.id_movimiento + '">' + esc(x.fecha + ' · doc ' + (x.documento || 's/d') + ' · despachado ' + fmt(x.despachado) + ' m · pendiente ' + fmt(x.consumo) + ' m · ' + x.ruta) + '</option>'; }).join('') + '<option value="SIN_REFERENCIA">Sin despacho relacionado (irá a Revisión)</option>';
         upd();
       });
     }, serie);
     function upd() {
       var d = list.filter(function (x) { return x.id_movimiento === desp.value; })[0], q = +met.value;
-      if (desp.value === 'SIN_REFERENCIA') { calc.hidden = false; calc.className = 'full note warn'; calc.textContent = 'Devolución sin referencia: se registrará y se abrirá una alerta de conciliación.'; return; }
+      if (desp.value === 'SIN_REFERENCIA') { calc.hidden = false; calc.className = 'full note warn'; calc.textContent = 'Devolución sin referencia: se registrará y se abrirá una alerta de Revisión.'; return; }
       if (!d || !q) { calc.hidden = true; return; }
       calc.hidden = false;
       if (q > d.consumo) { calc.className = 'full note err'; calc.textContent = 'La devolución (' + fmt(q) + ' m) supera lo pendiente del despacho (' + fmt(d.consumo) + ' m). Se rechazará.'; }
@@ -542,7 +542,7 @@
       field('fecha_limite', 'Fecha límite de devolución', 'date', { req: 1, value: addDays(todayISO(), +(BOOT.params.DIAS_PRESTAMO_DEFECTO || 15)) }) + field('bodega', 'Bodega', 'select', { options: c.bodegas, req: 1 }) +
       field('contratista', 'Contratista', 'text', { list: 'dl-con' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep' }) + field('proyecto', 'Proyecto', 'text', { wide: 1 }) +
       field('documento', 'Documento de respaldo', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) + '</div><div class="actions"><button class="btn pri" type="submit">Registrar préstamo</button></div></form>' + datalists() + '</div>' : '') +
-      '<div class="card"><h3>Préstamos</h3><div class="note warn">Los préstamos importados de la matriz no tienen fecha límite: quedan <b>PENDIENTE DE CONCILIACIÓN</b> hasta que se complete el dato. Las observaciones de texto libre ("prestada a…", "hay que devolver") se convirtieron en tareas en Alertas, no en devoluciones.</div><div id="lt"></div></div>';
+      '<div class="card"><h3>Préstamos</h3><div class="note warn">Los préstamos importados de la matriz no tienen fecha límite: quedan <b>PENDIENTE DE Revisión</b> hasta que se complete el dato. Las observaciones de texto libre ("prestada a…", "hay que devolver") se convirtieron en tareas en Alertas, no en devoluciones.</div><div id="lt"></div></div>';
     if (can('registrar')) {
       var pf = v.querySelector('#pf'); bindCodigoFields(pf, false);
       seriePicker(v.querySelector('#sp'), function (s) { setCodigo(pf, s); if (s) pf.querySelector('select[name=bodega]').value = s.bodega_actual; });
@@ -551,7 +551,7 @@
     table(document.getElementById('lt'), { rows: loans, name: 'prestamos', cols: [{ k: 'id_prestamo', l: 'ID' }, { k: 'serie', l: 'Serie', f: function (x, r) { return '<a href="#vida/' + encodeURIComponent(r.id_serie) + '">' + esc(x) + '</a>'; } },
       { k: 'metraje_prestado', l: 'Prestado', n: 1 }, { k: 'metraje_devuelto', l: 'Devuelto', n: 1 }, { k: 'diferencia', l: 'Dif.', n: 1 }, { k: 'responsable', l: 'Responsable' }, { k: 'proyecto', l: 'Proyecto' },
       { k: 'fecha_prestamo', l: 'Fecha' }, { k: 'fecha_limite', l: 'Límite' }, { k: 'estado', l: 'Estado', f: function (x) { return pill(x); } },
-      { k: 'id_mov_prestamo', l: '', f: function (x, r) { var open = ['ACTIVO', 'VENCIDO', 'PENDIENTE_DE_CONCILIACION', 'DEVUELTO_PARCIAL'].indexOf(r.estado) >= 0; return (open && can('registrar') ? '<button class="btn sm" data-dev="' + esc(r.id_prestamo) + '">Devolver</button> ' : '') + (can('aprobar') && open ? '<button class="btn sm" data-st="' + esc(r.id_prestamo) + '">Estado</button>' : ''); } }],
+      { k: 'id_mov_prestamo', l: '', f: function (x, r) { var open = ['ACTIVO', 'VENCIDO', 'PENDIENTE_DE_REVISION', 'DEVUELTO_PARCIAL'].indexOf(r.estado) >= 0; return (open && can('registrar') ? '<button class="btn sm" data-dev="' + esc(r.id_prestamo) + '">Devolver</button> ' : '') + (can('aprobar') && open ? '<button class="btn sm" data-st="' + esc(r.id_prestamo) + '">Estado</button>' : ''); } }],
       after: function (el) {
         el.querySelectorAll('[data-dev]').forEach(function (b) { b.onclick = function () { var p = loans.filter(function (x) { return x.id_prestamo === b.dataset.dev; })[0]; modal('<h3>Devolver préstamo ' + esc(p.id_prestamo) + '</h3><p class="hint">Prestado ' + m(p.metraje_prestado) + ' a ' + esc(p.responsable) + (p.metraje_devuelto ? ' · ya devuelto ' + m(p.metraje_devuelto) : '') + '</p><div class="form-grid">' + codigoFields(false, p.codigo) + field('metraje', 'Metraje devuelto (m)', 'number', { req: 1 }) + field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO() }) + field('bodega', 'Bodega receptora', 'select', { options: BOOT.catalogos.bodegas }) + field('estado_material', 'Estado del material', 'select', { options: ['DISPONIBLE', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + field('observacion', 'Observaciones', 'textarea', { full: 1 }) + '</div><div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Registrar</button></div>', function (md, close) { bindCodigoFields(md, false); md.querySelector('#ok').onclick = function () { var d = formData(md); d.id_prestamo = p.id_prestamo; api('returnLoan', d).then(function () { toast('Devolución de préstamo registrada.', 'ok'); close(); route_(); }).catch(function (x) { toast(x.message, 'err'); }); }; }); }; });
         el.querySelectorAll('[data-st]').forEach(function (b) { b.onclick = function () { modal('<h3>Estado manual del préstamo</h3><div class="form-grid">' + field('estado', 'Estado', 'select', { options: ['PERDIDO', 'CONSUMIDO_EN_OBRA'], req: 1 }) + field('comentario', 'Comentario', 'textarea', { full: 1, req: 1 }) + '</div><div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) { md.querySelector('#ok').onclick = function () { var d = formData(md); d.id_prestamo = b.dataset.st; api('setLoanState', d).then(function () { toast('Estado actualizado.', 'ok'); close(); route_(); }).catch(function (x) { toast(x.message, 'err'); }); }; }); }; });
@@ -607,7 +607,7 @@
     var r = await api('alerts', { filtros: alFilters }), pend = can('aprobar') ? await api('pendingApprovals') : [];
     v.innerHTML = (pend.length ? '<div class="card"><h3>Movimientos pendientes de aprobación<small>bajas y ajustes</small></h3><div id="ap"></div></div>' : '') +
       '<div class="card"><form class="filters" id="flt">' + field('estado', 'Estado', 'select', { options: ['ABIERTAS', 'ABIERTA', 'EN_REVISION', 'RESUELTA', 'DESCARTADA', 'RESUELTA_AUTO'], value: alFilters.estado, empty: 'Todas' }) +
-      field('categoria', 'Categoría', 'select', { options: ['CRITICA', 'CONCILIACION', 'FORMATO', 'PRESTAMO', 'TAREA'], value: alFilters.categoria, empty: 'Todas' }) +
+      field('categoria', 'Categoría', 'select', { options: ['CRITICA', 'REVISION', 'FORMATO', 'PRESTAMO', 'TAREA'], value: alFilters.categoria, empty: 'Todas' }) +
       field('severidad', 'Severidad', 'select', { options: ['CRITICA', 'ALTA', 'MEDIA', 'BAJA', 'INFO'], value: alFilters.severidad, empty: 'Todas' }) +
       field('tipo', 'Tipo', 'select', { options: BOOT.catalogos.tipos_alerta, value: alFilters.tipo, empty: 'Todos' }) + field('serie', 'Serie', 'text', { value: alFilters.serie }) +
       '<div class="row"><button class="btn pri" type="submit">Aplicar</button><button class="btn" type="button" id="clr">Limpiar</button></div></form></div><div class="card"><div id="at"></div></div>';
