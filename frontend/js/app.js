@@ -226,7 +226,7 @@
   }
   function bindCodigoFields(root, editable) {
     var cod = root.querySelector('[name=codigo]'), desc = root.querySelector('[name=descripcion_art]'); if (!cod || !desc) return;
-    desc.readOnly = true; cod.readOnly = !editable;
+    desc.readOnly = true; cod.readOnly = !(editable || !cod.value);
     var sync = function () { desc.value = artDesc(cod.value); };
     cod.addEventListener('input', sync); cod.addEventListener('change', sync); sync();
   }
