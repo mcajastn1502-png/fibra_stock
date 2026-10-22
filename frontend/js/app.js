@@ -468,9 +468,11 @@
       var common = field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO(), req: 1 });
       var obs = field('observacion', 'Observaciones', 'textarea', { full: 1, req: ['INGRESO_ADICIONAL', 'BAJA_POR_MAL_ESTADO', 'AJUSTE_MANUAL_AUTORIZADO'].indexOf(t) >= 0 });
       var met = field('metraje', 'Metraje (m)', 'number', { req: 1, hint: 'Solo números, sin separador de miles.' });
-      var docGen = field('documento_generado', 'Documento generado', 'text', { value: (FS && FS.PREFIJOS_DOC ? FS.PREFIJOS_DOC[t] || 'MO' : 'MO') + '-' + '001', readonly: 1, hint: 'Generado automáticamente por el sistema.' });
+      var prefijos = { DESPACHO: 'DS', DEVOLUCION: 'DV', PRESTAMO: 'PR', DEVOLUCION_DE_PRESTAMO: 'DV', INGRESO_INICIAL: 'IN', INGRESO_ADICIONAL: 'IN', INVENTARIO_INICIAL_DE_APERTURA: 'IN', BAJA_POR_MAL_ESTADO: 'BA', AJUSTE_MANUAL_AUTORIZADO: 'AJ', CAMBIO_DE_ESTADO: 'RE', CORTE_O_FRACCIONAMIENTO: 'CO', SOBRANTE_DE_OBRA: 'SO', TRASLADO_ENTRE_BODEGAS: 'TR' };
+      var docGen = field('documento_generado', 'Documento generado', 'text', { value: (prefijos[t] || 'MO') + '-' + '001', readonly: 1, hint: 'Generado automáticamente por el sistema.' });
       var docGenField = v.querySelector('[name=documento_generado]');
-      if (docGenField) docGenField.value = (FS && FS.PREFIJOS_DOC ? FS.PREFIJOS_DOC[t] || 'MO' : 'MO') + '-' + '001';
+      var prefijos = { DESPACHO: 'DS', DEVOLUCION: 'DV', PRESTAMO: 'PR', DEVOLUCION_DE_PRESTAMO: 'DV', INGRESO_INICIAL: 'IN', INGRESO_ADICIONAL: 'IN', INVENTARIO_INICIAL_DE_APERTURA: 'IN', BAJA_POR_MAL_ESTADO: 'BA', AJUSTE_MANUAL_AUTORIZADO: 'AJ', CAMBIO_DE_ESTADO: 'RE', CORTE_O_FRACCIONAMIENTO: 'CO', SOBRANTE_DE_OBRA: 'SO', TRASLADO_ENTRE_BODEGAS: 'TR' };
+      if (docGenField) docGenField.value = (prefijos[t] || 'MO') + '-' + '001';
       var h = '';
       if (t === 'DESPACHO') h = docGen + met + bod + common + field('documento', 'N° documento de despacho (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep', req: 1 }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) + field('proyecto', 'Ruta / proyecto', 'text', { req: 1, wide: 1 }) + field('responsable', 'Responsable que retira', 'text') + field('justificacion', 'Justificación (solo si repite documento y metraje)', 'text', { wide: 1 }) + obs;
       else if (t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA') h = docGen + codigoFields(true) + met + bod + field('ubicacion', 'Ubicación', 'select', { options: c.ubicaciones, empty: '—' }) + field('estado', 'Estado inicial', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + common + field('documento', 'Documento de ingreso (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) +
@@ -484,7 +486,7 @@
         field('metraje', 'Metraje devuelto (m)', 'number', { req: 1 }) + field('fecha', 'Fecha de devolución', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
         field('bodega', 'Bodega receptora', 'select', { options: c.bodegas, req: 1 }) + field('estado_material', 'Estado del material', 'select', { options: ['DISPONIBLE', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) +
         field('motivo', 'Motivo de devolución', 'text', { req: 1, wide: 1 }) + field('documento', 'Documento de devolución', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) +
-        '<div class="full note" id="calc" hidden></div>' + obs;
+        '<div class="full note" id="calc" hidden></div>';
       else if (t === 'BAJA_POR_MAL_ESTADO') h = docGen + met + bod + common + field('documento', 'Acta / informe (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
       else if (t === 'AJUSTE_MANUAL_AUTORIZADO') h = docGen + field('metraje', 'Ajuste (m)', 'number', { req: 1, hint: 'Positivo suma, negativo resta. Requiere aprobación.' }) + common + field('documento', 'Documento de respaldo (opcional)', 'text', { req: 1, hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
       var nueva = t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA';
