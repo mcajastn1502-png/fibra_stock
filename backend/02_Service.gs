@@ -231,9 +231,11 @@ FS.Service = function (store, user) {
       if (p.estado === 'MAL_ESTADO' && U.isEmpty(p.observacion)) fail('Describa el daño encontrado.');
       m.metraje = 0; m.signo = 0; m.bodega_origen = s.bodega_actual; m.bodega_destino = s.bodega_actual; m.estado_resultante = p.estado;
     }
+    var prefijo = FS.PREFIJOS_DOC[t] || 'MO';
+    m.documento = (U.str(p.documento).trim() || (prefijo + '-' + String(store.nextId(prefijo)).padStart(3, '0')));
     duplicateCheck(m, p.justificacion);
     if (p.justificacion) m.observacion_original = (m.observacion_original + ' | JUSTIFICACIÓN: ' + p.justificacion).replace(/^ \| /, '');
-    return save([m]);
+    var r = save([m]); r.documento = m.documento; return r;
   };
 
   /** Devolución relacionada con el despacho original (o sin referencia → Revisión). */
@@ -265,6 +267,7 @@ FS.Service = function (store, user) {
       a.id_alerta = store.nextId('ALE'); store.append('ALERTAS', [a]); self.recalc();
     }
     res.resumen = desp ? { despachado: +desp.metraje, devuelto: m.metraje, consumo_preliminar: +desp.metraje - m.metraje, completa: +desp.metraje === m.metraje } : { devolucion_sin_referencia: true };
+    res.documento = m.documento;
     return res;
   };
 

@@ -494,7 +494,7 @@
     v.querySelector('#mf').onsubmit = function (e) {
       e.preventDefault(); var d = formData(e.target), btn = e.target.querySelector('[type=submit]'); busy(btn, true);
       var action = d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? 'cut' : d.tipo === 'DEVOLUCION' ? 'registerReturn' : 'registerMovement';
-      api(action, d).then(function (r) { toast('Registrado ' + r.movimientos.join(', ') + '. Saldo de ' + r.serie.id_serie + ': ' + fmt(r.serie.saldo_actual) + ' m', 'ok'); location.hash = '#vida/' + encodeURIComponent(d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? d.serie.toUpperCase() : r.serie.id_serie); })
+      api(action, d).then(function (r) { var docMsg = r.documento ? ' · Doc: ' + r.documento : ''; toast('Registrado ' + r.movimientos.join(', ') + docMsg + '. Saldo de ' + r.serie.id_serie + ': ' + fmt(r.serie.saldo_actual) + ' m', 'ok'); location.hash = '#vida/' + encodeURIComponent(d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? d.serie.toUpperCase() : r.serie.id_serie); })
         .catch(function (x) {
           busy(btn, false); toast(x.message, 'err');
           var j = dyn.querySelector('[name=justificacion]'); if (j && /justificaci/i.test(x.message)) { j.closest('.f').hidden = false; j.focus(); }
