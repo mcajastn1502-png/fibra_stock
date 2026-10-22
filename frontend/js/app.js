@@ -468,22 +468,25 @@
       var common = field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO(), req: 1 });
       var obs = field('observacion', 'Observaciones', 'textarea', { full: 1, req: ['INGRESO_ADICIONAL', 'BAJA_POR_MAL_ESTADO', 'AJUSTE_MANUAL_AUTORIZADO'].indexOf(t) >= 0 });
       var met = field('metraje', 'Metraje (m)', 'number', { req: 1, hint: 'Solo números, sin separador de miles.' });
+      var docGen = field('documento_generado', 'Documento generado', 'text', { value: (FS && FS.PREFIJOS_DOC ? FS.PREFIJOS_DOC[t] || 'MO' : 'MO') + '-' + '001', readonly: 1, hint: 'Generado automáticamente por el sistema.' });
+      var docGenField = v.querySelector('[name=documento_generado]');
+      if (docGenField) docGenField.value = (FS && FS.PREFIJOS_DOC ? FS.PREFIJOS_DOC[t] || 'MO' : 'MO') + '-' + '001';
       var h = '';
-      if (t === 'DESPACHO') h = met + bod + common + field('documento', 'N° documento de despacho', 'text', { req: 1 }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep', req: 1 }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) + field('proyecto', 'Ruta / proyecto', 'text', { req: 1, wide: 1 }) + field('responsable', 'Responsable que retira', 'text') + field('justificacion', 'Justificación (solo si repite documento y metraje)', 'text', { wide: 1 }) + obs;
-      else if (t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA') h = codigoFields(true) + met + bod + field('ubicacion', 'Ubicación', 'select', { options: c.ubicaciones, empty: '—' }) + field('estado', 'Estado inicial', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + common + field('documento', 'Documento de ingreso', 'text') +
+      if (t === 'DESPACHO') h = docGen + met + bod + common + field('documento', 'N° documento de despacho (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep', req: 1 }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) + field('proyecto', 'Ruta / proyecto', 'text', { req: 1, wide: 1 }) + field('responsable', 'Responsable que retira', 'text') + field('justificacion', 'Justificación (solo si repite documento y metraje)', 'text', { wide: 1 }) + obs;
+      else if (t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA') h = docGen + codigoFields(true) + met + bod + field('ubicacion', 'Ubicación', 'select', { options: c.ubicaciones, empty: '—' }) + field('estado', 'Estado inicial', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + common + field('documento', 'Documento de ingreso (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) +
         (t === 'INVENTARIO_INICIAL_DE_APERTURA' ? field('certificado_por', 'Certificado por', 'text') : '') + obs;
-      else if (t === 'INGRESO_ADICIONAL') h = met + bod + common + field('documento', 'Documento', 'text') + obs;
-      else if (t === 'CAMBIO_DE_ESTADO') h = field('estado', 'Nuevo estado', 'select', { options: ['RESERVADA', 'DISPONIBLE', 'MAL_ESTADO', 'EN_REVISION'], value: 'RESERVADA', empty: undefined, req: 1, hint: 'DISPONIBLE libera la reserva.' }) +
+      else if (t === 'INGRESO_ADICIONAL') h = docGen + met + bod + common + field('documento', 'Documento (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
+      else if (t === 'CAMBIO_DE_ESTADO') h = docGen + field('estado', 'Nuevo estado', 'select', { options: ['RESERVADA', 'DISPONIBLE', 'MAL_ESTADO', 'EN_REVISION'], value: 'RESERVADA', empty: undefined, req: 1, hint: 'DISPONIBLE libera la reserva.' }) +
         field('proyecto', 'Proyecto / ruta', 'text', { wide: 1, hint: 'Obligatorio al reservar.' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep' }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) +
         field('responsable', 'Solicitado por', 'text') + field('documento', 'N° de solicitud / documento', 'text') + common + obs;
-      else if (t === 'CORTE_O_FRACCIONAMIENTO') h = met + field('serie_derivada', 'Serie derivada', 'text', { hint: 'Vacío = se genera SERIE-1-001, -002…' }) + common + obs;
-      else if (t === 'DEVOLUCION') h = met + bod + common + field('id_despacho', 'Despacho original', 'select', { options: [], req: 1, hint: 'Seleccione el despacho relacionado con esta devolución.' }) + field('certificado_por', 'Certificado por', 'text') +
+      else if (t === 'CORTE_O_FRACCIONAMIENTO') h = docGen + met + field('serie_derivada', 'Serie derivada', 'text', { hint: 'Vacío = se genera SERIE-1-001, -002…' }) + common + obs;
+      else if (t === 'DEVOLUCION') h = docGen + met + bod + common + field('id_despacho', 'Despacho original', 'select', { options: [], req: 1, hint: 'Seleccione el despacho relacionado con esta devolución.' }) + field('certificado_por', 'Certificado por', 'text') +
         field('metraje', 'Metraje devuelto (m)', 'number', { req: 1 }) + field('fecha', 'Fecha de devolución', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
         field('bodega', 'Bodega receptora', 'select', { options: c.bodegas, req: 1 }) + field('estado_material', 'Estado del material', 'select', { options: ['DISPONIBLE', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) +
         field('motivo', 'Motivo de devolución', 'text', { req: 1, wide: 1 }) + field('documento', 'Documento de devolución', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) +
         '<div class="full note" id="calc" hidden></div>' + obs;
-      else if (t === 'BAJA_POR_MAL_ESTADO') h = met + bod + common + field('documento', 'Acta / informe', 'text') + obs;
-      else if (t === 'AJUSTE_MANUAL_AUTORIZADO') h = field('metraje', 'Ajuste (m)', 'number', { req: 1, hint: 'Positivo suma, negativo resta. Requiere aprobación.' }) + common + field('documento', 'Documento de respaldo', 'text', { req: 1 }) + obs;
+      else if (t === 'BAJA_POR_MAL_ESTADO') h = docGen + met + bod + common + field('documento', 'Acta / informe (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
+      else if (t === 'AJUSTE_MANUAL_AUTORIZADO') h = docGen + field('metraje', 'Ajuste (m)', 'number', { req: 1, hint: 'Positivo suma, negativo resta. Requiere aprobación.' }) + common + field('documento', 'Documento de respaldo (opcional)', 'text', { req: 1, hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
       var nueva = t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA';
       if (!nueva) h = codigoFields(false, cur && cur.codigo) + h;
       dyn.innerHTML = h;
