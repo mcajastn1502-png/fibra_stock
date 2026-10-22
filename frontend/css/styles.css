@@ -70,7 +70,7 @@ input, select, textarea { border: 1px solid #c9d2db; border-radius: 6px; padding
 input:focus, select:focus, textarea:focus { outline: 2px solid #7fd0d6; border-color: var(--accent); }
 textarea { min-height: 64px; resize: vertical; }
 .hint { font-size: 11.5px; color: var(--ink-3); }
-.btn { text-decoration: none; display: inline-block; border: 1px solid #c9d2db; background: #fff; border-radius: 6px; padding: 7px 13px; cursor: pointer; white-space: nowrap; }
+.btn { text-decoration: none; display: inline-block; border: 1px solid #c9d2db; background: #fff; border-radius: 6px; padding: 7px 13px; cursor: pointer; white-space: nowrap; font-weight: 700; color: #0f1c29; }
 .btn:hover { background: #f4f6f8; }
 .btn.pri { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .btn.pri:hover { background: #096a72; }
