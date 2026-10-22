@@ -66,6 +66,13 @@ FS.MATRIZ_COLS = {
 /* ------------------------------------------------------------------ */
 /*  Tipos de movimiento y su efecto en el saldo de la serie            */
 /* ------------------------------------------------------------------ */
+FS.PREFIJOS_DOC = {
+  DESPACHO: 'DS', DEVOLUCION: 'DV', PRESTAMO: 'PR', DEVOLUCION_DE_PRESTAMO: 'DV',
+  INGRESO_INICIAL: 'IN', INGRESO_ADICIONAL: 'IN', INVENTARIO_INICIAL_DE_APERTURA: 'IN',
+  BAJA_POR_MAL_ESTADO: 'BA', AJUSTE_MANUAL_AUTORIZADO: 'AJ', CAMBIO_DE_ESTADO: 'RE',
+  CORTE_O_FRACCIONAMIENTO: 'CO', SOBRANTE_DE_OBRA: 'SO', TRASLADO_ENTRE_BODEGAS: 'TR'
+};
+
 FS.TIPOS_MOV = {
   INGRESO_INICIAL:               { signo: +1, grupo: 'ingresado',   requiereDoc: false },
   INGRESO_ADICIONAL:             { signo: +1, grupo: 'ingresado',   requiereDoc: false },
