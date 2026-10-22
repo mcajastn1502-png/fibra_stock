@@ -81,7 +81,7 @@
     ['Operación'],
     ['dashboard', 'Inicio', 'leer', '▦'], ['inventario', 'Inventario actual', 'leer', '≡'], ['buscar', 'Buscar serie', 'leer', '⌕'], ['vida', 'Historial fibra', 'leer', '◷'],
     ['Registro'],
-    ['movimiento', 'Registrar movimiento', 'registrar', '+'], ['devolucion', 'Registrar devolución', 'registrar', '↩'], ['prestamos', 'Préstamos', 'leer', '⇄'],
+    ['movimiento', 'Registrar movimiento', 'registrar', '+'], ['prestamos', 'Préstamos', 'leer', '⇄'],
     ['sobrantes', 'Sobrantes', 'leer', '◔', 'oculto'], ['traslado', 'Transferencias', 'registrar', '⇢'],
     ['Control'],
     ['alertas', 'Alertas y Revisión', 'leer', '!'], ['reportes', 'Reportes', 'reportes', '▤'], ['abastecimiento', 'Abastecimiento', 'leer', '↗'],
@@ -456,8 +456,8 @@
   }
   SCREENS.movimiento = async function (v, serie) {
     // Ingreso inicial, Ingreso adicional y Corte se retiraron del formulario; sus ramas en draw() se conservan para reactivarlos agregándolos aquí.
-    var c = BOOT.catalogos, tipos = ['DESPACHO', 'INVENTARIO_INICIAL_DE_APERTURA', 'CAMBIO_DE_ESTADO', 'BAJA_POR_MAL_ESTADO', 'AJUSTE_MANUAL_AUTORIZADO'];
-    v.innerHTML = '<div class="card"><h3>Registrar movimiento</h3><div class="note">Devoluciones, préstamos y traslados tienen pantallas propias para relacionarlos con el despacho o préstamo original. Bajas y ajustes quedan <b>pendientes de aprobación</b> del supervisor.</div>' +
+    var c = BOOT.catalogos, tipos = ['DESPACHO', 'DEVOLUCION', 'INVENTARIO_INICIAL_DE_APERTURA', 'CAMBIO_DE_ESTADO', 'BAJA_POR_MAL_ESTADO', 'AJUSTE_MANUAL_AUTORIZADO'];
+    v.innerHTML = '<div class="card"><h3>Registrar movimiento</h3><div class="note">Devoluciones, préstamos y traslados se registran como tipo de movimiento. Las devoluciones requieren seleccionar el despacho original. Bajas y ajustes quedan <b>pendientes de aprobación</b> del supervisor.</div>' +
       '<form id="mf"><div class="form-grid">' + field('tipo', 'Tipo de movimiento', 'select', { options: tipos.map(function (t) { return { v: t, l: tipoLbl({ tipo: t, origen: 'APP' }) }; }), value: 'DESPACHO', empty: undefined, req: 1 }) + '<div id="sp" class="full"></div><div id="dyn" class="full form-grid"></div></div>' +
       '<div class="actions"><button class="btn pri" type="submit">Registrar</button></div></form>' + datalists() + '</div>';
     var sel = v.querySelector('select[name=tipo]'), dyn = v.querySelector('#dyn'), cur = null;
@@ -477,6 +477,11 @@
         field('proyecto', 'Proyecto / ruta', 'text', { wide: 1, hint: 'Obligatorio al reservar.' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep' }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) +
         field('responsable', 'Solicitado por', 'text') + field('documento', 'N° de solicitud / documento', 'text') + common + obs;
       else if (t === 'CORTE_O_FRACCIONAMIENTO') h = met + field('serie_derivada', 'Serie derivada', 'text', { hint: 'Vacío = se genera SERIE-1-001, -002…' }) + common + obs;
+      else if (t === 'DEVOLUCION') h = met + bod + common + field('id_despacho', 'Despacho original', 'select', { options: [], req: 1, hint: 'Seleccione el despacho relacionado con esta devolución.' }) + field('certificado_por', 'Certificado por', 'text') +
+        field('metraje', 'Metraje devuelto (m)', 'number', { req: 1 }) + field('fecha', 'Fecha de devolución', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
+        field('bodega', 'Bodega receptora', 'select', { options: c.bodegas, req: 1 }) + field('estado_material', 'Estado del material', 'select', { options: ['DISPONIBLE', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) +
+        field('motivo', 'Motivo de devolución', 'text', { req: 1, wide: 1 }) + field('documento', 'Documento de devolución', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) +
+        '<div class="full note" id="calc" hidden></div>' + obs;
       else if (t === 'BAJA_POR_MAL_ESTADO') h = met + bod + common + field('documento', 'Acta / informe', 'text') + obs;
       else if (t === 'AJUSTE_MANUAL_AUTORIZADO') h = field('metraje', 'Ajuste (m)', 'number', { req: 1, hint: 'Positivo suma, negativo resta. Requiere aprobación.' }) + common + field('documento', 'Documento de respaldo', 'text', { req: 1 }) + obs;
       var nueva = t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA';
@@ -488,7 +493,7 @@
     sel.onchange = draw; draw();
     v.querySelector('#mf').onsubmit = function (e) {
       e.preventDefault(); var d = formData(e.target), btn = e.target.querySelector('[type=submit]'); busy(btn, true);
-      var action = d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? 'cut' : 'registerMovement';
+      var action = d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? 'cut' : d.tipo === 'DEVOLUCION' ? 'registerReturn' : 'registerMovement';
       api(action, d).then(function (r) { toast('Registrado ' + r.movimientos.join(', ') + '. Saldo de ' + r.serie.id_serie + ': ' + fmt(r.serie.saldo_actual) + ' m', 'ok'); location.hash = '#vida/' + encodeURIComponent(d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? d.serie.toUpperCase() : r.serie.id_serie); })
         .catch(function (x) {
           busy(btn, false); toast(x.message, 'err');
