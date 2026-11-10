@@ -61,6 +61,21 @@ if(require.main===module){
     const nueva=remota[remota.length-1].slice(); remota.push(nueva); g.importarMatrizAuto(); console.log('auto con fila nueva → importaciones:',logs());
     g.importarMatrizAuto(); console.log('auto repetida sin cambios → importaciones:',logs());
     new g.FS.SheetStore().update('PARAMETROS','clave','MATRIZ_URL',{valor:''}); remota.push(nueva); g.importarMatrizAuto(); console.log('auto con enlace vacío → importaciones:',logs());
+    const movs=()=>new g.FS.SheetStore().all('MOVIMIENTOS').length;
+    st.update('PARAMETROS','clave','MATRIZ_URL',{valor:u}); const antes=movs();
+    remota=[['RESUMEN','TOTAL'],['FIBRA 48H','1200'],['FIBRA 96H','800']]; // pestaña equivocada (sin SERIE / MTS)
+    try { g.importarMatriz(); console.log('FALLO: pestaña equivocada importada'); } catch(e){ console.log('pestaña equivocada → rechazada; movimientos intactos:', movs()===antes); }
+    try { g.importarMatrizAuto(); console.log('FALLO: auto importó pestaña equivocada'); } catch(e){ console.log('auto pestaña equivocada → rechazada; movimientos intactos:', movs()===antes); }
+    remota=base.slice(0,40).map(r=>r.slice()); // matriz recortada: caída drástica
+    try { g.importarMatrizAuto(); console.log('FALLO: auto aceptó caída drástica'); } catch(e){ console.log('auto con caída drástica → cancelada; movimientos intactos:', movs()===antes); }
+    st.update('PARAMETROS','clave','MATRIZ_URL',{valor:''});
+  }
+  { // IDs: reimportar con 0 importados pero con movimientos de la app no debe repetir IDs
+    let st=new g.FS.SheetStore(); const todos=st.all('MOVIMIENTOS');
+    const app=[Object.assign({}, todos.find(m=>m.origen==='IMPORTACION'), { origen:'APP', id_movimiento:'MOV-000005' })]; // movimiento de la app con un ID bajo
+    st.replace('MOVIMIENTOS', app); // como en producción tras la importación equivocada: solo quedan los de la app
+    g.importarMatriz(); st=new g.FS.SheetStore(); const ids=st.all('MOVIMIENTOS').map(m=>m.id_movimiento);
+    console.log('reimport con '+app.length+' mov. de la app y 0 importados → IDs únicos:', new Set(ids).size===ids.length, '· mov. app conservados:', app.every(m=>ids.includes(m.id_movimiento)));
   }
   // admin directo
   const st=new g.FS.SheetStore(); const salt='s1'; st.append('USUARIOS',[{email:'admin@telconet.ec',nombre:'Admin',rol:'ADMIN',activo:'SI',salt,hash:g.FS_hash_(salt,'Clave12345')}]);

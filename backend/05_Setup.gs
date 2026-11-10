@@ -131,11 +131,20 @@ function importarMatrizAuto() {
   if (FS_huellaMatriz_(vals) === props.getProperty('MATRIZ_HUELLA')) return; // sin cambios
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(120000)) return; // el sistema está ocupado; se reintenta en la próxima hora
-  try { FS_importarValores_(FS_getSpreadsheet_(), vals, url, 'IMPORTAR_MATRIZ_AUTO'); } finally { lock.releaseLock(); }
+  try { FS_importarValores_(FS_getSpreadsheet_(), vals, url, 'IMPORTAR_MATRIZ_AUTO', true); } finally { lock.releaseLock(); }
 }
 
-function FS_importarValores_(ss, vals, url, accion) {
+/** La fila 1 debe tener al menos SERIE y MTS INGRESO o MTS SALIDA; si no, el enlace no apunta a la pestaña de la matriz. */
+function FS_validarEncabezadoMatriz_(head) {
+  var k = (head || []).map(FS.util.key), tiene = function (f) { return FS.MATRIZ_COLS[f].some(function (h) { return k.indexOf(FS.util.key(h)) >= 0; }); };
+  if (!tiene('serie') || !(tiene('ingreso') || tiene('salida')))
+    throw new Error('La pestaña de origen no es la matriz: en la fila 1 faltan las columnas SERIE y MTS INGRESO / MTS SALIDA. ' +
+      'Revise el enlace en "Configurar origen de la matriz" (debe incluir el #gid=… de la pestaña de la matriz). No se modificó nada.');
+}
+
+function FS_importarValores_(ss, vals, url, accion, auto) {
   if (vals.length < 2) throw new Error(url ? 'La hoja del enlace MATRIZ_URL está vacía.' : 'MATRIZ_ORIGINAL está vacía.');
+  FS_validarEncabezadoMatriz_(vals[0]);
   var huella = FS_huellaMatriz_(vals);
   vals = vals.slice();
   var head = vals.shift();
@@ -143,11 +152,16 @@ function FS_importarValores_(ss, vals, url, accion) {
   var store = new FS.SheetStore();
   var existentes = store.all('MOVIMIENTOS').filter(function (m) { return m.origen === 'IMPORTACION'; }).length;
   var manuales = store.all('MOVIMIENTOS').filter(function (m) { return m.origen !== 'IMPORTACION'; });
-  if (url) FS_copiarMatrizOriginal_(ss, [head].concat(vals));
   var props = PropertiesService.getScriptProperties();
-  if (!existentes) ['MOV', 'ALE', 'PRE', 'SOB'].forEach(function (p) { props.deleteProperty('SEQ_' + p); });
+  // Reiniciar la numeración solo con la base vacía: si quedan movimientos de la app, sus IDs no deben repetirse.
+  if (!existentes && !manuales.length) ['MOV', 'ALE', 'PRE', 'SOB'].forEach(function (p) { props.deleteProperty('SEQ_' + p); });
   var r = FS.processMatrix(rows, { today: store.today(), now: store.now(), params: store.params(), catalogRows: store.all('CATALOGOS'),
     user: Session.getEffectiveUser().getEmail() || 'IMPORTACION', idGen: function (p) { return store.nextId(p); } });
+  if (!r.movimientos.length) throw new Error('La matriz no generó ningún movimiento (' + rows.length + ' filas). No se modificó nada; revise el enlace de origen.');
+  if (auto && existentes && r.movimientos.length < existentes / 2)
+    throw new Error('Importación automática cancelada: generaría ' + r.movimientos.length + ' movimientos y hoy hay ' + existentes + ' importados. ' +
+      'Si el cambio es correcto, ejecute "3. Importar matriz histórica" manualmente. No se modificó nada.');
+  if (url) FS_copiarMatrizOriginal_(ss, [head].concat(vals));
   r.alertas.forEach(function (a) { a.id_alerta = store.nextId('ALE'); });
   var keepAlerts = store.all('ALERTAS').filter(function (a) { return manuales.some(function (m) { return m.id_movimiento === a.id_movimiento; }); });
   store.replace('MATRIZ_NORMALIZADA', r.staging);
