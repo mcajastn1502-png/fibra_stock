@@ -356,9 +356,10 @@ Mientras la aplicación está en evaluación, el equipo puede seguir anotando en
 **Preparación (una sola vez)**
 1. En la hoja de trabajo anterior: **Compartir** → agregue la cuenta propietaria del script como **Lector**. La hoja no necesita ser pública.
 2. En la hoja de la base de datos: **Fibra Stock › Configurar origen de la matriz (Google Sheets)** → pegue el enlace de la pestaña de la matriz de la hoja anterior (con `#gid=…`).
+3. **Fibra Stock › 4. Instalar activadores**. Además del correo diario y la auditoría, instala la **importación automática cada hora**: revisa la hoja anterior y, solo si cambió desde la última importación, la reimporta sin preguntar. Queda registrada en **Bitácora** como `IMPORTAR_MATRIZ_AUTO`.
 
 **Durante la transición**
-- Para ver los datos al día: **Fibra Stock › 3. Importar matriz histórica**. Es un solo paso y se puede repetir las veces que haga falta.
+- Los datos anotados en la hoja anterior llegan solos a la app en un máximo de **1 hora**. Para verlos al instante: **Fibra Stock › 3. Importar matriz histórica**. Es un solo paso y se puede repetir las veces que haga falta.
 - **Registre los movimientos solo en la hoja anterior.** Use la app para consultar, revisar alertas y sacar reportes. Un movimiento anotado en ambos lados se cuenta dos veces.
 - **No concilie alertas ni préstamos importados todavía.** Cada importación regenera las alertas y los préstamos que vienen de la matriz, y su estado vuelve al inicial. Los movimientos registrados desde la app sí se conservan siempre.
 
@@ -366,7 +367,7 @@ Mientras la aplicación está en evaluación, el equipo puede seguir anotando en
 1. Avise al equipo que deje de anotar en la hoja anterior.
 2. Ejecute **Fibra Stock › 3. Importar matriz histórica** por última vez y confirme en **Bitácora** el resumen (*filas → movimientos, series, alertas*).
 3. Deje la hoja anterior en **solo lectura** (Compartir → todos como Lector) para que nadie siga anotando ahí.
-4. **Desconecte el origen:** **Fibra Stock › Configurar origen de la matriz** → deje el enlace vacío. Así nadie reimporta por error: una reimportación no borra lo registrado en la app, pero reinicia las alertas y los préstamos conciliados.
+4. **Desconecte el origen:** **Fibra Stock › Configurar origen de la matriz** → deje el enlace vacío. Con el enlace vacío, la importación automática deja de ejecutarse. Así nadie reimporta por error: una reimportación no borra lo registrado en la app, pero reinicia las alertas y los préstamos conciliados.
 5. Desde ese momento, todos los movimientos se registran y consultan en la app. Ya puede iniciar la Revisión histórica (sección 18).
 
 ---

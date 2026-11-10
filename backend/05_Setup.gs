@@ -8,7 +8,7 @@ function onOpen() {
     .addItem('2. Crear / restablecer administrador', 'crearAdministrador')
     .addItem('3. Importar matriz histórica', 'importarMatriz')
     .addItem('Configurar origen de la matriz (Google Sheets)', 'configurarOrigenMatriz')
-    .addItem('4. Instalar activadores (correo diario, auditoría)', 'instalarActivadores')
+    .addItem('4. Instalar activadores (correo diario, auditoría, importación cada hora)', 'instalarActivadores')
     .addItem('5. Proteger hojas', 'protegerHojas')
     .addSeparator()
     .addItem('Recalcular saldos y alertas', 'recalcularTodo')
@@ -69,17 +69,25 @@ function FS_parseSheetUrl_(url) {
   return { id: id[1], gid: gid ? Number(gid[1]) : null };
 }
 
-/** Lee la matriz desde el enlace MATRIZ_URL (como texto visible) y la copia en MATRIZ_ORIGINAL como respaldo. */
-function FS_leerMatrizRemota_(ss, url) {
+/** Lee la matriz desde el enlace MATRIZ_URL (como texto visible), sin modificar nada. */
+function FS_valoresMatrizRemota_(url) {
   var ref = FS_parseSheetUrl_(url), remote;
   try { remote = SpreadsheetApp.openById(ref.id); } catch (e) { throw new Error('No se pudo abrir la hoja de la matriz. Verifique que la cuenta que ejecuta el script tenga acceso. (' + e.message + ')'); }
   var sh = ref.gid === null ? remote.getSheets()[0] : remote.getSheets().filter(function (s) { return s.getSheetId() === ref.gid; })[0];
   if (!sh) throw new Error('La hoja de la matriz no tiene una pestaña con gid=' + ref.gid + '.');
-  var vals = sh.getDataRange().getDisplayValues();
+  return sh.getDataRange().getDisplayValues();
+}
+
+/** Copia los valores leídos en MATRIZ_ORIGINAL como respaldo. */
+function FS_copiarMatrizOriginal_(ss, vals) {
   var dest = ss.getSheetByName('MATRIZ_ORIGINAL') || ss.insertSheet('MATRIZ_ORIGINAL');
   dest.clearContents();
   if (vals.length && vals[0].length) dest.getRange(1, 1, vals.length, vals[0].length).setNumberFormat('@').setValues(vals);
-  return vals;
+}
+
+/** Huella de la matriz: permite saber si la hoja anterior cambió desde la última importación. */
+function FS_huellaMatriz_(vals) {
+  return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(vals), Utilities.Charset.UTF_8));
 }
 
 function configurarOrigenMatriz() {
@@ -99,21 +107,43 @@ function configurarOrigenMatriz() {
  * si no, lee MATRIZ_ORIGINAL sin modificarla. Si ya hay movimientos importados, pide confirmación para reemplazarlos.
  */
 function importarMatriz() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet(), ui = null;
+  var ss = FS_getSpreadsheet_(), ui = null;
   try { ui = SpreadsheetApp.getUi(); } catch (e) { /* ejecución desde el editor */ }
   var url = String(new FS.SheetStore().params().MATRIZ_URL || '').trim();
-  var vals = url ? FS_leerMatrizRemota_(ss, url) // texto tal como se ve: preserva "3.156", "05-12-2022", etc.
+  var vals = url ? FS_valoresMatrizRemota_(url) // texto tal como se ve: preserva "3.156", "05-12-2022", etc.
     : ss.getSheetByName('MATRIZ_ORIGINAL').getDataRange().getDisplayValues();
+  if (ui) { // confirmar antes de bloquear: mientras se espera la respuesta la app sigue registrando
+    var movs = new FS.SheetStore().all('MOVIMIENTOS'), existentes = movs.filter(function (m) { return m.origen === 'IMPORTACION'; }).length;
+    if (existentes && ui.alert('Reimportar', 'Ya existen ' + existentes + ' movimientos importados. ¿Reemplazarlos? (los ' + (movs.length - existentes) + ' movimientos registrados desde la app se conservan)', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+  }
+  var lock = LockService.getScriptLock(); lock.waitLock(60000);
+  try { FS_importarValores_(ss, vals, url, 'IMPORTAR_MATRIZ'); } finally { lock.releaseLock(); }
+}
+
+/**
+ * Activador horario: si hay un enlace en MATRIZ_URL y la hoja anterior cambió desde la última importación,
+ * la reimporta sin preguntar (los movimientos registrados desde la app se conservan). Con el enlace vacío no hace nada.
+ */
+function importarMatrizAuto() {
+  var url = String(new FS.SheetStore().params().MATRIZ_URL || '').trim();
+  if (!url) return;
+  var vals = FS_valoresMatrizRemota_(url), props = PropertiesService.getScriptProperties();
+  if (FS_huellaMatriz_(vals) === props.getProperty('MATRIZ_HUELLA')) return; // sin cambios
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(120000)) return; // el sistema está ocupado; se reintenta en la próxima hora
+  try { FS_importarValores_(FS_getSpreadsheet_(), vals, url, 'IMPORTAR_MATRIZ_AUTO'); } finally { lock.releaseLock(); }
+}
+
+function FS_importarValores_(ss, vals, url, accion) {
   if (vals.length < 2) throw new Error(url ? 'La hoja del enlace MATRIZ_URL está vacía.' : 'MATRIZ_ORIGINAL está vacía.');
+  var huella = FS_huellaMatriz_(vals);
+  vals = vals.slice();
   var head = vals.shift();
   var rows = vals.filter(function (r) { return r.join('') !== ''; }).map(function (r) { var o = {}; head.forEach(function (h, j) { o[h] = r[j]; }); return o; });
   var store = new FS.SheetStore();
   var existentes = store.all('MOVIMIENTOS').filter(function (m) { return m.origen === 'IMPORTACION'; }).length;
   var manuales = store.all('MOVIMIENTOS').filter(function (m) { return m.origen !== 'IMPORTACION'; });
-  if (existentes && ui) {
-    var b = ui.alert('Reimportar', 'Ya existen ' + existentes + ' movimientos importados. ¿Reemplazarlos? (los ' + manuales.length + ' movimientos registrados desde la app se conservan)', ui.ButtonSet.YES_NO);
-    if (b !== ui.Button.YES) return;
-  }
+  if (url) FS_copiarMatrizOriginal_(ss, [head].concat(vals));
   var props = PropertiesService.getScriptProperties();
   if (!existentes) ['MOV', 'ALE', 'PRE', 'SOB'].forEach(function (p) { props.deleteProperty('SEQ_' + p); });
   var r = FS.processMatrix(rows, { today: store.today(), now: store.now(), params: store.params(), catalogRows: store.all('CATALOGOS'),
@@ -130,7 +160,8 @@ function importarMatriz() {
   var relConf = store.all('RELACIONES').filter(function (x) { return x.estado !== 'SUGERIDA'; });
   store.replace('RELACIONES', relConf.concat(r.relaciones.filter(function (x) { return !relConf.some(function (c) { return c.serie === x.serie; }); })));
   var res = new FS.Service(store, FS_ADMIN_USER_).recalc();
-  store.append('BITACORA', [{ id: store.nextId('LOG'), fecha_hora: store.now(), usuario: Session.getEffectiveUser().getEmail(), accion: 'IMPORTAR_MATRIZ', tabla: 'MOVIMIENTOS',
+  props.setProperty('MATRIZ_HUELLA', huella);
+  store.append('BITACORA', [{ id: store.nextId('LOG'), fecha_hora: store.now(), usuario: Session.getEffectiveUser().getEmail(), accion: accion, tabla: 'MOVIMIENTOS',
     detalle: rows.length + ' filas → ' + r.movimientos.length + ' movimientos, ' + res.series + ' series, ' + r.alertas.length + ' alertas' }]);
   FS_toast_('Importación lista: ' + rows.length + ' filas → ' + r.movimientos.length + ' movimientos, ' + res.series + ' series, ' + r.alertas.length + ' alertas.');
 }
@@ -146,7 +177,8 @@ function instalarActivadores() {
   ScriptApp.newTrigger('tareaDiaria').timeBased().everyDays(1).atHour(6).nearMinute(45).create();
   ScriptApp.newTrigger('reporteSemanal').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).create();
   ScriptApp.newTrigger('auditarEdicion').forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet()).onEdit().create();
-  FS_toast_('Activadores instalados: tarea diaria 06:45, reporte semanal lunes 07:00 y auditoría de ediciones.');
+  ScriptApp.newTrigger('importarMatrizAuto').timeBased().everyHours(1).create();
+  FS_toast_('Activadores instalados: tarea diaria 06:45, reporte semanal lunes 07:00, auditoría de ediciones e importación automática de la matriz cada hora (solo si la hoja anterior cambió).');
 }
 
 /** Diario: recalcula (vencimientos de préstamos, saldos bajos) y envía resumen por correo. */

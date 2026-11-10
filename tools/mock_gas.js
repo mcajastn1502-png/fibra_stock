@@ -5,6 +5,7 @@ Sheet.prototype={
   getName(){return this.name}, getLastRow(){return this.data.length}, getLastColumn(){return this.data.reduce((m,r)=>Math.max(m,r.length),0)},
   getMaxRows(){return 1000}, setFrozenRows(){}, getProtections(){return []},
   getRange(r,c,nr,nc){ return new Range(this,r,c,nr||1,nc||1); },
+  clearContents(){ this.data=[]; return this; },
   getDataRange(){ return new Range(this,1,1,Math.max(1,this.data.length),Math.max(1,this.getLastColumn())); },
 };
 function Range(sh,r,c,nr,nc){Object.assign(this,{sh,r,c,nr,nc});}
@@ -27,7 +28,7 @@ const g={ console, Object, JSON, Math, Date, String, Number, Array, RegExp, Erro
   CacheService:{ getScriptCache:()=>({ get:k=>cache[k]||null, put:(k,v)=>cache[k]=v, remove:k=>delete cache[k] }) },
   LockService:{ getScriptLock:()=>({ tryLock:()=>true, waitLock(){}, releaseLock(){} }) },
   Utilities:{ formatDate:(d,tz,f)=>{ const s=new Date(d.getTime()-5*3600e3).toISOString(); return f.includes('HH')? s.slice(0,19).replace('T',' '):s.slice(0,10); },
-    getUuid:()=>crypto.randomUUID(), computeDigest:(a,s)=>[...crypto.createHash('sha256').update(s).digest()].map(b=>b>127?b-256:b), DigestAlgorithm:{SHA_256:1}, Charset:{UTF_8:1} },
+    getUuid:()=>crypto.randomUUID(), computeDigest:(a,s)=>[...crypto.createHash('sha256').update(s).digest()].map(b=>b>127?b-256:b), base64Encode:b=>Buffer.from(b.map(x=>x&255)).toString("base64"), DigestAlgorithm:{SHA_256:1}, Charset:{UTF_8:1} },
   ContentService:{ createTextOutput:t=>({ t, setMimeType(){return this} }), MimeType:{JSON:1} },
   HtmlService:{ createHtmlOutput:h=>h }, Session:{ getEffectiveUser:()=>({getEmail:()=> 'owner@telconet.ec'}), getActiveUser:()=>({getEmail:()=> 'owner@telconet.ec'}) },
   MailApp:{ sendEmail:(o)=>console.log('[mail]', typeof o==='string'?o:o.to+' | '+o.subject) }, Logger:{log:console.log},
@@ -51,6 +52,16 @@ if(require.main===module){
   const objs=g.FS.parseCSV(csv); const head=Object.keys(objs[0]);
   sheets.MATRIZ_ORIGINAL.data=[head].concat(objs.map(o=>head.map(h=>o[h])));
   let t=Date.now(); g.importarMatriz(); console.log('import ms',Date.now()-t);
+  { // importación automática: sin cambios no reimporta; con una fila nueva sí
+    const st=new g.FS.SheetStore(), u='https://docs.google.com/spreadsheets/d/X/edit#gid=1'; if(!st.update('PARAMETROS','clave','MATRIZ_URL',{valor:u})) st.append('PARAMETROS',[{clave:'MATRIZ_URL',valor:u}]);
+    const base=g.FS_getSpreadsheet_().getSheetByName('MATRIZ_ORIGINAL').getDataRange().getDisplayValues(); let remota=base.map(r=>r.slice());
+    g.FS_valoresMatrizRemota_=()=>remota.map(r=>r.slice());
+    const logs=()=>new g.FS.SheetStore().all('BITACORA').filter(x=>x.accion==='IMPORTAR_MATRIZ_AUTO').length;
+    g.importarMatrizAuto(); console.log('auto sin cambios → importaciones:',logs());
+    const nueva=remota[remota.length-1].slice(); remota.push(nueva); g.importarMatrizAuto(); console.log('auto con fila nueva → importaciones:',logs());
+    g.importarMatrizAuto(); console.log('auto repetida sin cambios → importaciones:',logs());
+    new g.FS.SheetStore().update('PARAMETROS','clave','MATRIZ_URL',{valor:''}); remota.push(nueva); g.importarMatrizAuto(); console.log('auto con enlace vacío → importaciones:',logs());
+  }
   // admin directo
   const st=new g.FS.SheetStore(); const salt='s1'; st.append('USUARIOS',[{email:'admin@telconet.ec',nombre:'Admin',rol:'ADMIN',activo:'SI',salt,hash:g.FS_hash_(salt,'Clave12345')}]);
   const call=(action,payload,token)=>JSON.parse(g.doPost({postData:{contents:JSON.stringify({action,payload,token})}}).t);

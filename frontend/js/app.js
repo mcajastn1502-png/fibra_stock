@@ -21,7 +21,12 @@
     var t = document.createElement('div'); t.className = 'toast ' + (kind || ''); t.textContent = msg;
     document.getElementById('toast').appendChild(t); setTimeout(function () { t.remove(); }, kind === 'err' ? 9000 : 4500);
   }
-  function api(action, payload) { return Api.call(action, payload); }
+  /* Indicador de carga: barra superior + "Consultando…" mientras haya una consulta en curso. */
+  var pending = 0;
+  function loadState(d) { pending = Math.max(0, pending + d); document.body.classList.toggle('is-busy', pending > 0); }
+  function track(p) { loadState(1); return Promise.resolve(p).finally(function () { loadState(-1); }); }
+  /** silent = true: consulta de fondo que no muestra indicador (p. ej. contador de alertas). */
+  function api(action, payload, silent) { var p = Api.call(action, payload); return silent ? p : track(p); }
   function todayISO() { return (BOOT && BOOT.hoy) || new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10); }
   function opt(list, sel, empty) { return (empty !== undefined ? '<option value="">' + esc(empty) + '</option>' : '') + list.map(function (v) { var val = typeof v === 'object' ? v.v : v, lab = typeof v === 'object' ? v.l : v; return '<option value="' + esc(val) + '"' + (String(val) === String(sel) ? ' selected' : '') + '>' + esc(lab) + '</option>'; }).join(''); }
   function formData(root) { var o = {}; root.querySelectorAll('[name]').forEach(function (el) { o[el.name] = el.type === 'checkbox' ? el.checked : el.value.trim(); }); return o; }
@@ -79,9 +84,9 @@
   /* ============================ navegación ============================ */
   var NAV = [
     ['Operación'],
-    ['dashboard', 'Inicio', 'leer', '▦'], ['inventario', 'Inventario actual', 'leer', '≡'], ['buscar', 'Buscar serie', 'leer', '⌕'], ['vida', 'Historial fibra', 'leer', '◷'],
+    ['dashboard', 'Inicio', 'leer', '▦'], ['inventario', 'Inventario actual', 'leer', '≡'], ['buscar', 'Buscar serie', 'leer', '⌕', 'oculto'], ['vida', 'Buscar / Historial fibra', 'leer', '◷'],
     ['Registro'],
-    ['movimiento', 'Registrar movimiento', 'registrar', '+'], ['prestamos', 'Préstamos', 'leer', '⇄'],
+    ['movimiento', 'Registrar movimiento', 'registrar', '+'], ['prestamos', 'Préstamos', 'leer', '⇄', 'oculto'],
     ['sobrantes', 'Sobrantes', 'leer', '◔', 'oculto'], ['traslado', 'Transferencias', 'registrar', '⇢'],
     ['Control'],
     ['alertas', 'Alertas y Revisión', 'leer', '!'], ['reportes', 'Reportes', 'reportes', '▤'], ['abastecimiento', 'Abastecimiento', 'leer', '↗'],
@@ -96,7 +101,7 @@
     $app.innerHTML = '<div class="shell"><nav class="side" id="side"><div class="brand">' + LOGO + '<span>' + esc(cfg.APP_NAME || 'Fibra Stock') + '</span></div>' +
       NAV.map(function (n) { if (n.length === 1) return '<div class="grp">' + n[0] + '</div>'; if (!can(n[2]) || n[4] === 'oculto') return ''; return '<a href="#' + n[0] + '" data-r="' + n[0] + '"><span style="width:16px;text-align:center">' + n[3] + '</span>' + n[1] + (n[0] === 'alertas' ? '<span class="cnt" id="nav-crit" hidden></span>' : '') + '</a>'; }).join('') +
       '<div class="me"><b>' + esc(u.nombre || u.email) + '</b>' + esc(u.email) + '<br>Rol: ' + esc(u.rol) + '<div class="row" style="margin-top:8px">' + (Api.demo ? '' : '<button class="btn sm" id="btn-pass">Cambiar clave</button>') + '<button class="btn sm" id="btn-out">Salir</button></div></div></nav>' +
-      '<div class="main"><div class="top"><button class="btn sm menu-btn" id="btn-menu" aria-label="Menú">☰</button><h2 id="ttl"></h2><span class="sp"></span>' + (Api.demo ? '<span class="badge-demo">MODO DEMO · datos solo en este navegador</span>' : '') + '<span class="hint">Hoy ' + esc(BOOT.hoy) + '</span></div><div class="content" id="view"></div></div></div>';
+      '<div class="main"><div class="top"><button class="btn sm menu-btn" id="btn-menu" aria-label="Menú">☰</button><h2 id="ttl"></h2><span class="sp"></span>' + (Api.demo ? '<span class="badge-demo">MODO DEMO · datos solo en este navegador</span>' : '') + '<span class="busy-ind" role="status"><span class="spin"></span>Consultando…</span><span class="hint">Hoy ' + esc(BOOT.hoy) + '</span></div><div class="content" id="view"></div></div></div>';
     document.getElementById('btn-out').onclick = function () { Api.logout(); BOOT = null; location.hash = '#login'; route_(); };
     document.getElementById('btn-menu').onclick = function () { document.getElementById('side').classList.toggle('open'); };
     var bp = document.getElementById('btn-pass'); if (bp) bp.onclick = changePassword;
@@ -124,7 +129,7 @@
     refreshCritCount();
   }
   function refreshCritCount() {
-    api('alerts', { filtros: { estado: 'ABIERTAS', categoria: 'CRITICA', limite: 1 } }).then(function (r) { var b = document.getElementById('nav-crit'); if (b) { b.hidden = !r.total; b.textContent = r.total; } }).catch(function () {});
+    api('alerts', { filtros: { estado: 'ABIERTAS', categoria: 'CRITICA', limite: 1 } }, true).then(function (r) { var b = document.getElementById('nav-crit'); if (b) { b.hidden = !r.total; b.textContent = r.total; } }).catch(function () {});
   }
   window.addEventListener('hashchange', route_);
 
@@ -137,7 +142,7 @@
     if (Api.demo) bindDemo();
     else document.getElementById('lf').onsubmit = function (e) {
       e.preventDefault(); var d = formData(e.target), b = e.target.querySelector('button'); busy(b, true);
-      Api.login(d.email, d.password).then(function () { BOOT = null; location.hash = '#dashboard'; route_(); }).catch(function (x) { busy(b, false); renderLogin(x.message); });
+      track(Api.login(d.email, d.password)).then(function () { BOOT = null; location.hash = '#dashboard'; route_(); }).catch(function (x) { busy(b, false); renderLogin(x.message); });
     };
   }
   function demoLogin() {
@@ -174,7 +179,7 @@
       }).then(function (csv) {
         if (/^\s*<(!doctype|html)/i.test(csv)) throw new Error('Google pidió iniciar sesión: la hoja no está compartida como “Cualquier persona con el enlace”.');
         try { localStorage.setItem(SHEET_URL_KEY, url); } catch (e) { /* sin almacenamiento */ }
-        return Api.startDemo(csv, rolSel.value);
+        return track(Api.startDemo(csv, rolSel.value));
       }).then(function () { BOOT = null; location.hash = '#dashboard'; route_(); })
         .catch(function (err) { renderLogin('No se pudo cargar la hoja: ' + (err instanceof TypeError ? 'el navegador bloqueó la descarga (la hoja no es pública o no hay conexión).' : err.message)); });
     };
@@ -190,7 +195,7 @@
             if (!sheetName) throw new Error('El archivo Excel no contiene hojas.');
             content = window.XLSX.utils.sheet_to_csv(wb.Sheets[sheetName]);
           } else if (!csv) throw new Error('Use un archivo CSV, XLSX o XLS.');
-          Api.startDemo(content, rolSel.value).then(function () { BOOT = null; location.hash = '#dashboard'; route_(); }).catch(function (err) { renderLogin('No se pudo procesar el archivo: ' + err.message); });
+          track(Api.startDemo(content, rolSel.value)).then(function () { BOOT = null; location.hash = '#dashboard'; route_(); }).catch(function (err) { renderLogin('No se pudo procesar el archivo: ' + err.message); });
         } catch (err) { renderLogin('No se pudo procesar el archivo: ' + err.message); }
       };
       rd.onerror = function () { renderLogin('No se pudo leer el archivo.'); };
@@ -378,6 +383,7 @@
     v.innerHTML = '<div class="card"><form id="sf" class="row"><input name="q" value="' + esc(q || '') + '" placeholder="Serie, código, descripción, hilos (48H), bodega, documento, proyecto o contratista" style="flex:1;min-width:240px"><button class="btn pri">Buscar</button></form><p class="hint">La búsqueda por documento, proyecto o contratista revisa todos los movimientos de cada serie.</p></div><div class="card"><div id="res"></div></div>';
     v.querySelector('#sf').onsubmit = function (e) { e.preventDefault(); location.hash = '#buscar/' + encodeURIComponent(formData(e.target).q); };
     if (!q) { document.getElementById('res').innerHTML = '<p class="hint">Ingrese un término de búsqueda.</p>'; return; }
+    document.getElementById('res').innerHTML = '<div class="loading">Buscando…</div>';
     var r = await api('searchSeries', { q: q });
     if (r.length === 1) { location.hash = '#vida/' + encodeURIComponent(r[0].id_serie); return; }
     table(document.getElementById('res'), { rows: r, cols: serieCols(), name: 'busqueda', empty: 'No se encontraron series para "' + esc(q) + '"', onRow: function (s) { location.hash = '#vida/' + encodeURIComponent(s.id_serie); } });
@@ -390,11 +396,19 @@
   /** En la app, CAMBIO_DE_ESTADO se presenta como "Reservar"; los importados de la matriz conservan su nombre original. */
   function tipoLbl(t) { return t.tipo === 'CAMBIO_DE_ESTADO' && t.origen === 'APP' ? 'Reservar' : TIPO_LBL[t.tipo] || t.tipo; }
   SCREENS.vida = async function (v, serie) {
-    v.innerHTML = '<div class="card"><form id="sf" class="row"><input name="q" value="' + esc(serie || '') + '" placeholder="Serie del rollo (o busque por documento/proyecto en Buscar serie)" style="flex:1;min-width:220px"><button class="btn pri">Ver historial fibra</button></form></div><div id="life"></div>';
-    v.querySelector('#sf').onsubmit = function (e) { e.preventDefault(); var q = formData(e.target).q; if (q) location.hash = '#vida/' + encodeURIComponent(q.toUpperCase().replace(/\s+/g, '')); };
+    v.innerHTML = '<div class="card"><form id="sf" class="row"><input name="q" value="' + esc(serie || '') + '" placeholder="Serie, código, descripción, hilos (48H), bodega, documento, proyecto o contratista" style="flex:1;min-width:220px"><button class="btn pri">Buscar</button></form><p class="hint">Con la serie exacta se abre su historial; con otro término se listan las series que coinciden.</p></div><div id="life"></div>';
+    v.querySelector('#sf').onsubmit = function (e) { e.preventDefault(); var q = formData(e.target).q; if (q && q.trim()) location.hash = '#vida/' + encodeURIComponent(q.trim()); };
     if (!serie) return;
+    document.getElementById('life').innerHTML = '<div class="card loading">Consultando…</div>';
     var L;
-    try { L = await api('rollLife', { serie: serie }); } catch (e) { document.getElementById('life').innerHTML = '<div class="note err">' + esc(e.message) + ' <a href="#buscar/' + encodeURIComponent(serie) + '">Buscar coincidencias</a></div>'; return; }
+    try { L = await api('rollLife', { serie: serie }); } catch (e) {
+      // No es una serie exacta: se busca por cualquier término (código, documento, proyecto…).
+      var lifeEl = document.getElementById('life'), r = await api('searchSeries', { q: serie });
+      if (r.length === 1) { location.hash = '#vida/' + encodeURIComponent(r[0].id_serie); return; }
+      lifeEl.innerHTML = '<div class="card"><div id="res"></div></div>';
+      table(document.getElementById('res'), { rows: r, cols: serieCols(), name: 'busqueda', empty: 'No se encontraron series para "' + esc(serie) + '"', onRow: function (x) { location.hash = '#vida/' + encodeURIComponent(x.id_serie); } });
+      return;
+    }
     var s = L.serie, box = document.getElementById('life');
     var M = function (l, x, raw) { return '<div class="m"><div class="l">' + l + '</div><div class="v' + (+x < 0 ? ' neg' : '') + '">' + (raw ? x : m(x)) + '</div></div>'; };
     box.innerHTML = '<div class="card"><div class="row" style="justify-content:space-between"><div><h3 style="margin:0">' + esc(s.id_serie) + ' ' + pill(s.estado_actual) + ' ' + pill(s.estado_saldo) + '</h3><div class="hint">' + esc(s.codigo) + ' · ' + esc(s.descripcion) + ' · ' + esc(s.hilos) + 'H · span ' + esc(s.span) + (s.serie_madre ? ' · serie madre <a href="#vida/' + encodeURIComponent(s.serie_madre) + '">' + esc(s.serie_madre) + '</a>' : '') + '</div></div>' +
@@ -416,7 +430,7 @@
       '<div><div class="card"><h3>Consumo por despacho<small>despachado − devoluciones vinculadas</small></h3><div id="cons"></div></div>' +
       '<div class="card"><h3>Alertas de Revisión</h3><div id="al"></div></div>' +
       '<div class="card"><h3>Rutas y proyectos</h3><div class="chips">' + (L.rutas.map(function (x) { return '<span class="chip">' + esc(x) + '</span>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
-      '<h3 style="margin-top:14px">Documentos asociados</h3><div class="chips">' + (L.documentos.map(function (x) { return '<a class="chip" href="#buscar/' + encodeURIComponent(x) + '">' + esc(x) + '</a>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
+      '<h3 style="margin-top:14px">Documentos asociados</h3><div class="chips">' + (L.documentos.map(function (x) { return '<a class="chip" href="#vida/' + encodeURIComponent(x) + '">' + esc(x) + '</a>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
       '<h3 style="margin-top:14px">Observaciones</h3>' + (L.observaciones.map(function (x) { return '<div class="hint" style="margin-bottom:4px">• ' + esc(x) + '</div>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
       '<div class="card"><h3>Familia del rollo<small>series relacionadas (no se fusionan automáticamente)</small></h3><div id="fam"></div></div>' +
       (L.prestamos.length || L.sobrantes.length ? '<div class="card"><h3>Préstamos y sobrantes</h3><div id="ps"></div></div>' : '') + '</div></div>';
