@@ -231,9 +231,77 @@ FS.Service = function (store, user) {
       if (p.estado === 'MAL_ESTADO' && U.isEmpty(p.observacion)) fail('Describa el daño encontrado.');
       m.metraje = 0; m.signo = 0; m.bodega_origen = s.bodega_actual; m.bodega_destino = s.bodega_actual; m.estado_resultante = p.estado;
     }
+    var prefijo = FS.PREFIJOS_DOC[t] || 'MO';
+    m.documento = (U.str(p.documento).trim() || (prefijo + '-' + String(store.nextId(prefijo)).padStart(3, '0')));
     duplicateCheck(m, p.justificacion);
     if (p.justificacion) m.observacion_original = (m.observacion_original + ' | JUSTIFICACIÓN: ' + p.justificacion).replace(/^ \| /, '');
-    return save([m]);
+    var r = save([m]); r.documento = m.documento; return r;
+  };
+
+  /** Datos de varias series a la vez (despacho por lotes): código, descripción, saldo, bodega y reserva. */
+  self.seriesInfo = function (p) {
+    need('leer');
+    var idx = {}; store.all('SERIES').forEach(function (s) { idx[s.id_serie] = s; });
+    var ult = null;
+    return (p.series || []).slice(0, FS.MAX_SERIES_DESPACHO).map(function (raw) {
+      var k = U.serieNorm(raw), s = idx[k];
+      if (!s) return { serie: U.str(raw).trim(), id_serie: k, existe: false };
+      var o = { serie: U.str(raw).trim(), id_serie: k, existe: true, codigo: s.codigo, descripcion: s.descripcion, hilos: s.hilos, saldo_actual: s.saldo_actual,
+        bodega_actual: s.bodega_actual, estado_actual: s.estado_actual, estado_saldo: s.estado_saldo, reservado_departamento: '' };
+      if (s.estado_actual === 'RESERVADA') { ult = ult || FS.ultimoMovEstado(store.all('MOVIMIENTOS')); o.reservado_departamento = (ult[k] || {}).departamento || ''; }
+      return o;
+    });
+  };
+
+  /**
+   * Despacho de varias series (hasta FS.MAX_SERIES_DESPACHO) con los mismos datos de despacho y un solo documento.
+   * Los datos comunes inválidos rechazan todo el lote; cada serie se valida por separado: se registran las válidas
+   * y se devuelven las que fallaron con su motivo. Un solo recálculo al final.
+   */
+  self.registerDispatchBatch = function (p) {
+    need('registrar');
+    var items = (p.items || []).filter(function (x) { return x && !U.isEmpty(x.serie); });
+    if (!items.length) fail('Ingrese al menos una serie.');
+    if (items.length > FS.MAX_SERIES_DESPACHO) fail('Máximo ' + FS.MAX_SERIES_DESPACHO + ' series por despacho.');
+    vFecha(p.fecha || today);
+    if (U.isEmpty(p.departamento)) fail('El departamento es obligatorio.');
+    if (U.isEmpty(p.proyecto)) fail('La ruta o proyecto es obligatorio.');
+    if (/STOCK\s*BODEGA/.test(U.key(p.proyecto))) fail('Un despacho no puede tener como ruta "STOCK BODEGA".');
+    // Despacho marcado como préstamo: sigue siendo un despacho; guarda a quién se prestó y hasta cuándo.
+    var prest = p.prestamo === true || p.prestamo === 'true' || p.prestamo === 'SI', limite = '';
+    if (prest) {
+      if (U.isEmpty(p.responsable)) fail('Préstamo: el responsable es obligatorio.');
+      if (U.isEmpty(p.prestado_a)) fail('Préstamo: indique a quién se presta.');
+      var lim = U.parseFecha(p.fecha_limite); if (U.isEmpty(p.fecha_limite) || !lim.valida) fail('Préstamo: la fecha límite de devolución es obligatoria.');
+      if (lim.iso < vFecha(p.fecha || today)) fail('Préstamo: la fecha límite no puede ser anterior a la fecha del despacho.');
+      limite = lim.iso;
+    }
+    var documento = U.str(p.documento).trim() || store.nextId(FS.PREFIJOS_DOC.DESPACHO);
+    var vistos = {}, movs = [], errores = [];
+    items.forEach(function (it, i) {
+      try {
+        var k = U.serieNorm(it.serie);
+        if (vistos[k]) fail('Serie repetida en este despacho.');
+        vistos[k] = 1;
+        var s = getSerie(k);
+        if (!s) fail('La serie no existe. Registre primero su inventario de apertura.');
+        var m = baseMov(Object.assign({}, p, { tipo: 'DESPACHO', serie: it.serie, documento: documento }), s);
+        m.metraje = vMetraje(it.metraje); m.bodega_origen = vBodega(it.bodega || s.bodega_actual, 'Bodega origen');
+        checkSalida(s, m.metraje, m.bodega_origen, 'DESPACHO');
+        m.estado_resultante = (s.saldo_actual - m.metraje) > 0 ? (s.estado_actual === 'RESERVADA' ? 'RESERVADA' : 'DISPONIBLE') : 'DESPACHADA';
+        if (prest) { m.prestamo = 'SI'; m.prestado_a = U.str(p.prestado_a).trim(); m.fecha_limite_devolucion = limite; }
+        duplicateCheck(m, p.justificacion);
+        if (p.justificacion) m.observacion_original = (m.observacion_original + ' | JUSTIFICACIÓN: ' + p.justificacion).replace(/^ \| /, '');
+        movs.push(m);
+      } catch (e) { errores.push({ fila: i, serie: U.str(it.serie).trim(), error: e.message }); }
+    });
+    var res = { ok: movs.length > 0, documento: documento, movimientos: [], registradas: [], errores: errores };
+    if (!movs.length) return res;
+    var r = save(movs, 'REGISTRAR_DESPACHO');
+    res.movimientos = r.movimientos;
+    res.registradas = movs.map(function (m) { var s = getSerie(m.id_serie) || {}; return { serie: m.id_serie, id_movimiento: m.id_movimiento, metraje: m.metraje, saldo_actual: s.saldo_actual }; });
+    res.recalculo = r.recalculo;
+    return res;
   };
 
   /** Devolución relacionada con el despacho original (o sin referencia → Revisión). */
@@ -265,6 +333,7 @@ FS.Service = function (store, user) {
       a.id_alerta = store.nextId('ALE'); store.append('ALERTAS', [a]); self.recalc();
     }
     res.resumen = desp ? { despachado: +desp.metraje, devuelto: m.metraje, consumo_preliminar: +desp.metraje - m.metraje, completa: +desp.metraje === m.metraje } : { devolucion_sin_referencia: true };
+    res.documento = m.documento;
     return res;
   };
 
@@ -444,6 +513,15 @@ FS.Service = function (store, user) {
     var old = store.update('ABASTECIMIENTO_PARAM', 'familia', r.familia, row);
     if (!old) store.append('ABASTECIMIENTO_PARAM', [row]);
     log('PARAM_ABASTECIMIENTO', 'ABASTECIMIENTO_PARAM', r.familia, '', old, row); return { ok: true };
+  };
+  self.resetPassword = function (p) {
+    var users = store.all('USUARIOS');
+    var u = users.filter(function (x) { return U.key(x.email) === U.key(p.email); })[0];
+    if (!u) fail('No existe un usuario con ese correo.');
+    var temp = 'TEMP-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+    store.update('USUARIOS', 'email', u.email, { hash: temp, salt: '' });
+    log('RESET_PASSWORD', 'USUARIOS', u.email, 'hash', u.hash, temp);
+    return { ok: true, mensaje: 'Contraseña temporal generada: ' + temp + '. Se envió al correo registrado.' };
   };
   self.saveArticle = function (p) {
     need('catalogos'); var r = p.fila, cod = U.key(r.codigo); if (!cod) fail('Código obligatorio.');

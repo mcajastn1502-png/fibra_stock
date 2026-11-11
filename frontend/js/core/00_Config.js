@@ -31,7 +31,8 @@ FS.SCHEMA = {
     'bodega_origen', 'bodega_destino', 'ubicacion', 'estado_resultante', 'proyecto_ruta', 'departamento_original',
     'departamento', 'contratista_original', 'contratista', 'responsable', 'documento', 'documento_ref', 'usuario',
     'creado_en', 'observacion_original', 'observacion_normalizada', 'evidencia_url', 'origen', 'fila_origen',
-    'regla_aplicada', 'confianza', 'estado_registro', 'aprobacion', 'aprobado_por', 'id_vinculado', 'certificado_por'],
+    'regla_aplicada', 'confianza', 'estado_registro', 'aprobacion', 'aprobado_por', 'id_vinculado', 'certificado_por',
+    'prestamo', 'prestado_a', 'fecha_limite_devolucion'],
   PRESTAMOS: ['id_prestamo', 'id_serie', 'serie', 'codigo', 'metraje_prestado', 'responsable', 'contratista',
     'departamento', 'proyecto', 'fecha_prestamo', 'fecha_limite', 'fecha_devolucion', 'metraje_devuelto', 'diferencia',
     'estado', 'estado_manual', 'documento', 'observaciones', 'id_mov_prestamo', 'id_mov_devolucion', 'origen'],
@@ -66,13 +67,6 @@ FS.MATRIZ_COLS = {
 /* ------------------------------------------------------------------ */
 /*  Tipos de movimiento y su efecto en el saldo de la serie            */
 /* ------------------------------------------------------------------ */
-FS.PREFIJOS_DOC = {
-  DESPACHO: 'DS', DEVOLUCION: 'DV', PRESTAMO: 'PR', DEVOLUCION_DE_PRESTAMO: 'DV',
-  INGRESO_INICIAL: 'IN', INGRESO_ADICIONAL: 'IN', INVENTARIO_INICIAL_DE_APERTURA: 'IN',
-  BAJA_POR_MAL_ESTADO: 'BA', AJUSTE_MANUAL_AUTORIZADO: 'AJ', CAMBIO_DE_ESTADO: 'RE',
-  CORTE_O_FRACCIONAMIENTO: 'CO', SOBRANTE_DE_OBRA: 'SO', TRASLADO_ENTRE_BODEGAS: 'TR'
-};
-
 FS.TIPOS_MOV = {
   INGRESO_INICIAL:               { signo: +1, grupo: 'ingresado',   requiereDoc: false },
   INGRESO_ADICIONAL:             { signo: +1, grupo: 'ingresado',   requiereDoc: false },
@@ -166,6 +160,16 @@ FS.ROLES = {
 /* ------------------------------------------------------------------ */
 /*  Parámetros por defecto                                            */
 /* ------------------------------------------------------------------ */
+/** Máximo de series en un despacho por lotes. */
+FS.MAX_SERIES_DESPACHO = 25;
+
+FS.PREFIJOS_DOC = {
+  DESPACHO: 'DS', DEVOLUCION: 'DV', PRESTAMO: 'PR', DEVOLUCION_DE_PRESTAMO: 'DV',
+  INGRESO_INICIAL: 'IN', INGRESO_ADICIONAL: 'IN', INVENTARIO_INICIAL_DE_APERTURA: 'IN',
+  BAJA_POR_MAL_ESTADO: 'BA', AJUSTE_MANUAL_AUTORIZADO: 'AJ', CAMBIO_DE_ESTADO: 'RE',
+  CORTE_O_FRACCIONAMIENTO: 'CO', SOBRANTE_DE_OBRA: 'SO', TRASLADO_ENTRE_BODEGAS: 'TR'
+};
+
 FS.PARAMS_DEFAULT = [
   ['UMBRAL_SALDO_BAJO_M', 300, 'Saldo (m) por debajo del cual un rollo disponible se considera saldo bajo'],
   ['DIAS_AVISO_PRESTAMO', 3, 'Días antes del vencimiento para alertar préstamo próximo a vencer'],

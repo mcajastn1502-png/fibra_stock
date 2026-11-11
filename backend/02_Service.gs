@@ -238,6 +238,72 @@ FS.Service = function (store, user) {
     var r = save([m]); r.documento = m.documento; return r;
   };
 
+  /** Datos de varias series a la vez (despacho por lotes): código, descripción, saldo, bodega y reserva. */
+  self.seriesInfo = function (p) {
+    need('leer');
+    var idx = {}; store.all('SERIES').forEach(function (s) { idx[s.id_serie] = s; });
+    var ult = null;
+    return (p.series || []).slice(0, FS.MAX_SERIES_DESPACHO).map(function (raw) {
+      var k = U.serieNorm(raw), s = idx[k];
+      if (!s) return { serie: U.str(raw).trim(), id_serie: k, existe: false };
+      var o = { serie: U.str(raw).trim(), id_serie: k, existe: true, codigo: s.codigo, descripcion: s.descripcion, hilos: s.hilos, saldo_actual: s.saldo_actual,
+        bodega_actual: s.bodega_actual, estado_actual: s.estado_actual, estado_saldo: s.estado_saldo, reservado_departamento: '' };
+      if (s.estado_actual === 'RESERVADA') { ult = ult || FS.ultimoMovEstado(store.all('MOVIMIENTOS')); o.reservado_departamento = (ult[k] || {}).departamento || ''; }
+      return o;
+    });
+  };
+
+  /**
+   * Despacho de varias series (hasta FS.MAX_SERIES_DESPACHO) con los mismos datos de despacho y un solo documento.
+   * Los datos comunes inválidos rechazan todo el lote; cada serie se valida por separado: se registran las válidas
+   * y se devuelven las que fallaron con su motivo. Un solo recálculo al final.
+   */
+  self.registerDispatchBatch = function (p) {
+    need('registrar');
+    var items = (p.items || []).filter(function (x) { return x && !U.isEmpty(x.serie); });
+    if (!items.length) fail('Ingrese al menos una serie.');
+    if (items.length > FS.MAX_SERIES_DESPACHO) fail('Máximo ' + FS.MAX_SERIES_DESPACHO + ' series por despacho.');
+    vFecha(p.fecha || today);
+    if (U.isEmpty(p.departamento)) fail('El departamento es obligatorio.');
+    if (U.isEmpty(p.proyecto)) fail('La ruta o proyecto es obligatorio.');
+    if (/STOCK\s*BODEGA/.test(U.key(p.proyecto))) fail('Un despacho no puede tener como ruta "STOCK BODEGA".');
+    // Despacho marcado como préstamo: sigue siendo un despacho; guarda a quién se prestó y hasta cuándo.
+    var prest = p.prestamo === true || p.prestamo === 'true' || p.prestamo === 'SI', limite = '';
+    if (prest) {
+      if (U.isEmpty(p.responsable)) fail('Préstamo: el responsable es obligatorio.');
+      if (U.isEmpty(p.prestado_a)) fail('Préstamo: indique a quién se presta.');
+      var lim = U.parseFecha(p.fecha_limite); if (U.isEmpty(p.fecha_limite) || !lim.valida) fail('Préstamo: la fecha límite de devolución es obligatoria.');
+      if (lim.iso < vFecha(p.fecha || today)) fail('Préstamo: la fecha límite no puede ser anterior a la fecha del despacho.');
+      limite = lim.iso;
+    }
+    var documento = U.str(p.documento).trim() || store.nextId(FS.PREFIJOS_DOC.DESPACHO);
+    var vistos = {}, movs = [], errores = [];
+    items.forEach(function (it, i) {
+      try {
+        var k = U.serieNorm(it.serie);
+        if (vistos[k]) fail('Serie repetida en este despacho.');
+        vistos[k] = 1;
+        var s = getSerie(k);
+        if (!s) fail('La serie no existe. Registre primero su inventario de apertura.');
+        var m = baseMov(Object.assign({}, p, { tipo: 'DESPACHO', serie: it.serie, documento: documento }), s);
+        m.metraje = vMetraje(it.metraje); m.bodega_origen = vBodega(it.bodega || s.bodega_actual, 'Bodega origen');
+        checkSalida(s, m.metraje, m.bodega_origen, 'DESPACHO');
+        m.estado_resultante = (s.saldo_actual - m.metraje) > 0 ? (s.estado_actual === 'RESERVADA' ? 'RESERVADA' : 'DISPONIBLE') : 'DESPACHADA';
+        if (prest) { m.prestamo = 'SI'; m.prestado_a = U.str(p.prestado_a).trim(); m.fecha_limite_devolucion = limite; }
+        duplicateCheck(m, p.justificacion);
+        if (p.justificacion) m.observacion_original = (m.observacion_original + ' | JUSTIFICACIÓN: ' + p.justificacion).replace(/^ \| /, '');
+        movs.push(m);
+      } catch (e) { errores.push({ fila: i, serie: U.str(it.serie).trim(), error: e.message }); }
+    });
+    var res = { ok: movs.length > 0, documento: documento, movimientos: [], registradas: [], errores: errores };
+    if (!movs.length) return res;
+    var r = save(movs, 'REGISTRAR_DESPACHO');
+    res.movimientos = r.movimientos;
+    res.registradas = movs.map(function (m) { var s = getSerie(m.id_serie) || {}; return { serie: m.id_serie, id_movimiento: m.id_movimiento, metraje: m.metraje, saldo_actual: s.saldo_actual }; });
+    res.recalculo = r.recalculo;
+    return res;
+  };
+
   /** Devolución relacionada con el despacho original (o sin referencia → Revisión). */
   self.registerReturn = function (p) {
     need('registrar');

@@ -424,7 +424,7 @@
           (t.delta ? '<span class="delta ' + (t.delta > 0 ? 'pos' : 'negv') + '">' + (t.delta > 0 ? '+' : '') + fmt(t.delta) + ' m</span>' : (+t.metraje ? '<span class="delta">' + m(t.metraje) + '</span>' : '')) +
           ' → saldo <b class="num' + (t.saldo_despues < 0 ? ' neg' : '') + '">' + m(t.saldo_despues) + '</b> ' + pill(t.estado_resultante) + (t.aprobacion === 'PENDIENTE' ? ' ' + pill('PENDIENTE') : '') + (t.estado_registro === 'ANULADO' ? ' ' + pill('ANULADO') : '') + '</div>' +
           '<div class="meta">' + [t.bodega_origen && t.bodega_destino ? t.bodega_origen + ' → ' + t.bodega_destino : (t.bodega_destino || t.bodega_origen), t.proyecto_ruta, t.departamento, t.contratista, t.responsable && 'Resp. ' + t.responsable,
-            t.documento && 'Doc. ' + t.documento, t.documento_ref && 'Ref. ' + t.documento_ref, t.certificado_por && 'Certificado por ' + t.certificado_por].filter(Boolean).map(esc).join(' · ') + '</div>' +
+            t.documento && 'Doc. ' + t.documento, t.documento_ref && 'Ref. ' + t.documento_ref, t.certificado_por && 'Certificado por ' + t.certificado_por, t.prestamo === 'SI' && 'Préstamo a ' + (t.prestado_a || '—') + (t.fecha_limite_devolucion ? ' hasta ' + t.fecha_limite_devolucion : '')].filter(Boolean).map(esc).join(' · ') + '</div>' +
           '<div class="meta hint">' + esc(t.id_movimiento) + ' · ' + esc(t.origen) + (t.fila_origen ? ' fila ' + esc(t.fila_origen) : '') + ' · regla ' + esc(t.regla_aplicada) + ' · confianza ' + esc(t.confianza) + ' · ' + esc(t.usuario) + (t.observacion_original ? '<br>Obs: ' + esc(t.observacion_original) : '') + '</div></li>';
       }).join('') + '</ul></div>' +
       '<div><div class="card"><h3>Consumo por despacho<small>despachado − devoluciones vinculadas</small></h3><div id="cons"></div></div>' +
@@ -468,18 +468,156 @@
     };
     container.querySelector('#sp-go').onclick = go; inp.onchange = go; if (initial) go();
   }
+  /* ---- Despacho por lotes: tabla de series que se autocompleta (código, descripción, saldo y bodega) ---- */
+  var MAX_LOTE = 25;
+  function serieKey(x) { return String(x || '').toUpperCase().replace(/\s+/g, ''); }
+  function loteHtml() {
+    return '<div class="f full"><label>Series a despachar <span class="req">*</span></label>' +
+      '<div class="tbl-wrap lote-wrap"><table class="lote"><thead><tr><th class="c-n">#</th><th class="c-s">Serie</th><th class="c-c">Código de artículo</th><th>Descripción</th><th class="c-m">Metraje (m)</th><th class="c-b">Bodega origen</th><th class="c-x"></th></tr></thead><tbody></tbody></table></div>' +
+      '<div class="row lote-bar"><button type="button" class="btn sm" data-l="add">+ Agregar serie</button><button type="button" class="btn sm" data-l="paste">Pegar lista…</button><span class="lote-sp"></span><span class="hint" data-l="tot"></span></div>' +
+      '<div class="lote-paste" hidden><textarea rows="5" placeholder="Pegue las series, una por línea (por ejemplo, copiadas de una columna de Excel)"></textarea>' +
+      '<div class="row"><button type="button" class="btn sm pri" data-l="paste-ok">Agregar a la tabla</button><button type="button" class="btn sm" data-l="paste-no">Cancelar</button></div></div>' +
+      '<span class="hint">Hasta ' + MAX_LOTE + ' series. Al ingresar la serie se completan el código, la descripción, el metraje (saldo actual) y la bodega; el metraje se puede reducir para un despacho parcial.</span></div>';
+  }
+  function loteRow() {
+    return '<tr><td class="c-n num"></td><td><input class="l-serie" placeholder="Serie" autocomplete="off" aria-label="Serie"><div class="l-info"></div></td>' +
+      '<td><input class="l-cod" readonly tabindex="-1" aria-label="Código de artículo"></td><td><input class="l-desc" readonly tabindex="-1" aria-label="Descripción"></td>' +
+      '<td><input class="l-met" type="number" inputmode="numeric" step="any" min="0" aria-label="Metraje (m)"></td>' +
+      '<td><select class="l-bod" aria-label="Bodega origen">' + opt(BOOT.catalogos.bodegas, '', '—') + '</select></td>' +
+      '<td><button type="button" class="btn sm l-del" title="Quitar serie" aria-label="Quitar serie">✕</button></td></tr>';
+  }
+  function despachoLote(box, inicial) {
+    var tb = box.querySelector('tbody'), tot = box.querySelector('[data-l=tot]'), addBtn = box.querySelector('[data-l=add]'), pasteBox = box.querySelector('.lote-paste');
+    var q = function (tr, c) { return tr.querySelector(c); };
+    function rows() { return [].slice.call(tb.rows); }
+    function total() {
+      var n = 0, mt = 0; rows().forEach(function (tr) { if (q(tr, '.l-serie').value.trim()) { n++; mt += +q(tr, '.l-met').value || 0; } });
+      tot.innerHTML = '<b>' + n + '</b> ' + (n === 1 ? 'serie' : 'series') + ' · <b class="num">' + fmt(mt) + '</b> m';
+    }
+    function renum() { rows().forEach(function (tr, i) { tr.cells[0].textContent = i + 1; }); addBtn.disabled = rows().length >= MAX_LOTE; total(); }
+    function add(serie) {
+      if (rows().length >= MAX_LOTE) return null;
+      tb.insertAdjacentHTML('beforeend', loteRow()); var tr = tb.rows[tb.rows.length - 1];
+      if (serie) q(tr, '.l-serie').value = serie; renum(); return tr;
+    }
+    function info(tr, html, cls) { var el = q(tr, '.l-info'); el.innerHTML = html || ''; el.className = 'l-info' + (cls ? ' ' + cls : ''); tr.classList.toggle('err', cls === 'err'); }
+    function clear(tr) { q(tr, '.l-cod').value = ''; q(tr, '.l-desc').value = ''; q(tr, '.l-met').value = ''; q(tr, '.l-bod').value = ''; info(tr, ''); delete tr.dataset.q; }
+    function fill(tr, s) {
+      if (!s || !s.existe) { clear(tr); tr.dataset.q = q(tr, '.l-serie').value.trim(); info(tr, 'Serie no registrada.', 'err'); return; }
+      var saldo = +s.saldo_actual;
+      q(tr, '.l-serie').value = s.id_serie; tr.dataset.q = s.id_serie;
+      q(tr, '.l-cod').value = s.codigo || ''; q(tr, '.l-desc').value = artDesc(s.codigo) || s.descripcion || '';
+      q(tr, '.l-met').value = saldo > 0 ? saldo : ''; q(tr, '.l-met').max = saldo > 0 ? saldo : '';
+      q(tr, '.l-bod').value = s.bodega_actual || '';
+      var malo = saldo <= 0 || ['BAJA', 'AGOTADA', 'MAL_ESTADO', 'DESPACHADA'].indexOf(s.estado_actual) >= 0;
+      info(tr, 'Saldo <b class="num' + (saldo < 0 ? ' neg' : '') + '">' + m(saldo) + '</b> · ' + pill(s.estado_actual) + (s.reservado_departamento ? ' <span class="pill">' + esc(s.reservado_departamento) + '</span>' : '') +
+        (malo ? ' · no admite despacho' : ''), malo ? 'err' : '');
+    }
+    function marcarRepetidas() {
+      var vistos = {}; rows().forEach(function (tr) { var k = serieKey(q(tr, '.l-serie').value); if (!k) return; if (vistos[k]) info(tr, 'Serie repetida en este despacho.', 'err'); vistos[k] = 1; });
+    }
+    function lookup(trs) {
+      trs = trs.filter(function (tr) { return q(tr, '.l-serie').value.trim(); }); if (!trs.length) return;
+      var pedidas = trs.map(function (tr) { var s = q(tr, '.l-serie').value.trim(); tr.dataset.q = s; info(tr, '<span class="spin"></span> Consultando…'); return s; });
+      api('seriesInfo', { series: pedidas }).then(function (r) {
+        trs.forEach(function (tr, i) { if (tr.isConnected && q(tr, '.l-serie').value.trim() === pedidas[i]) fill(tr, r[i]); });
+        marcarRepetidas(); total();
+      }).catch(function (e) { trs.forEach(function (tr) { info(tr, esc(e.message), 'err'); }); });
+    }
+    function agregarLista(texto) {
+      var nuevas = [], vistos = {};
+      rows().forEach(function (tr) { var k = serieKey(q(tr, '.l-serie').value); if (k) vistos[k] = 1; });
+      String(texto || '').split(/[\r\n\t,;]+/).map(function (x) { return x.trim(); }).filter(Boolean).forEach(function (x) { var k = serieKey(x); if (!vistos[k]) { vistos[k] = 1; nuevas.push(x); } });
+      var libres = rows().filter(function (tr) { return !q(tr, '.l-serie').value.trim(); }), usadas = [], sobran = 0;
+      nuevas.forEach(function (x) { var tr = libres.shift() || add(); if (!tr) { sobran++; return; } q(tr, '.l-serie').value = x; usadas.push(tr); });
+      if (sobran) toast('Solo se admiten ' + MAX_LOTE + ' series por despacho: ' + sobran + ' no se agregaron.', 'err');
+      if (!rows().some(function (tr) { return !q(tr, '.l-serie').value.trim(); })) add(); // deja una fila libre si hay cupo
+      lookup(usadas);
+    }
+    tb.addEventListener('change', function (e) {
+      var tr = e.target.closest('tr'); if (!e.target.classList.contains('l-serie')) return;
+      var s = e.target.value.trim(); if (!s) { clear(tr); marcarRepetidas(); total(); return; }
+      if (s !== tr.dataset.q) lookup([tr]);
+    });
+    tb.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || !e.target.classList.contains('l-serie')) return;
+      e.preventDefault(); // Enter en la serie no envía el formulario: consulta y pasa a la fila siguiente
+      var tr = e.target.closest('tr'), s = e.target.value.trim(); if (!s) return;
+      if (s !== tr.dataset.q) lookup([tr]);
+      var sig = tr.nextElementSibling || add(); if (sig) q(sig, '.l-serie').focus();
+    });
+    tb.addEventListener('paste', function (e) {
+      if (!e.target.classList.contains('l-serie')) return;
+      var t = (e.clipboardData || window.clipboardData).getData('text'); if (!/[\r\n\t]/.test(t.trim())) return;
+      e.preventDefault(); agregarLista(t); // pegar varias series en una celda las reparte en filas
+    });
+    tb.addEventListener('input', function (e) { if (e.target.classList.contains('l-met')) total(); });
+    tb.addEventListener('click', function (e) {
+      if (!e.target.classList.contains('l-del')) return;
+      e.target.closest('tr').remove(); if (!rows().length) add(); marcarRepetidas(); renum();
+    });
+    addBtn.onclick = function () { var tr = add(); if (tr) q(tr, '.l-serie').focus(); };
+    box.querySelector('[data-l=paste]').onclick = function () { pasteBox.hidden = !pasteBox.hidden; if (!pasteBox.hidden) pasteBox.querySelector('textarea').focus(); };
+    box.querySelector('[data-l=paste-no]').onclick = function () { pasteBox.hidden = true; };
+    box.querySelector('[data-l=paste-ok]').onclick = function () { var ta = pasteBox.querySelector('textarea'); agregarLista(ta.value); ta.value = ''; pasteBox.hidden = true; };
+    add(inicial); if (inicial) lookup(rows());
+    return {
+      items: function () {
+        return rows().filter(function (tr) { return q(tr, '.l-serie').value.trim(); })
+          .map(function (tr) { return { tr: tr, serie: q(tr, '.l-serie').value.trim(), metraje: q(tr, '.l-met').value.trim(), bodega: q(tr, '.l-bod').value }; });
+      },
+      /** Quita las filas registradas y marca en rojo las que fallaron, con su motivo. */
+      aplicar: function (enviadas, r) {
+        var ok = {}; r.registradas.forEach(function (x) { ok[serieKey(x.serie)] = 1; });
+        r.errores.forEach(function (x) { var it = enviadas[x.fila]; if (it) info(it.tr, esc(x.error), 'err'); });
+        enviadas.forEach(function (it) { if (ok[serieKey(it.serie)] && !r.errores.some(function (x) { return enviadas[x.fila] === it; })) it.tr.remove(); });
+        if (!rows().length) add(); renum();
+      }
+    };
+  }
+
+  /* ---- Despacho marcado como préstamo: sigue siendo despacho; sus campos reemplazan Departamento, Ruta y Responsable ---- */
+  var PREST_MAP = { departamento: 'p_departamento', proyecto: 'p_proyecto', responsable: 'p_responsable' };
+  function prestamoHtml() {
+    return '<div class="f full"><label class="chk"><input type="checkbox" name="prestamo"> Préstamo</label>' +
+      '<span class="hint">Márquelo si la fibra se entrega en préstamo. Se registra como despacho y se guarda a quién se prestó y hasta cuándo.</span></div>' +
+      field('p_departamento', 'Departamento', 'text', { list: 'dl-dep', req: 1 }) + field('p_responsable', 'Responsable', 'text', { req: 1 }) +
+      field('prestado_a', 'Prestado a', 'text', { req: 1 }) + field('p_proyecto', 'Ruta', 'text', { req: 1 }) +
+      field('fecha_limite', 'Fecha límite de devolución', 'date', { req: 1, value: addDays(todayISO(), +(BOOT.params.DIAS_PRESTAMO_DEFECTO || 15)) });
+  }
+  function bindPrestamo(root) {
+    var chk = root.querySelector('[name=prestamo]'), el = function (n) { return root.querySelector('[name=' + n + ']'); };
+    var sync = function (copiar) {
+      var on = chk.checked;
+      Object.keys(PREST_MAP).forEach(function (n) {
+        var de = el(on ? n : PREST_MAP[n]), a = el(on ? PREST_MAP[n] : n);
+        if (copiar && de.value && !a.value) a.value = de.value; // lo escrito no se pierde al marcar o desmarcar
+        el(n).closest('.f').hidden = on; el(PREST_MAP[n]).closest('.f').hidden = !on;
+      });
+      ['prestado_a', 'fecha_limite'].forEach(function (n) { el(n).closest('.f').hidden = !on; });
+    };
+    chk.onchange = function () { sync(true); }; sync(false);
+  }
+  /** Con Préstamo marcado, los campos del préstamo ocupan el lugar de Departamento, Ruta y Responsable del despacho. */
+  function prestamoData(d) {
+    Object.keys(PREST_MAP).forEach(function (n) { if (d.prestamo) d[n] = d[PREST_MAP[n]]; delete d[PREST_MAP[n]]; });
+    if (!d.prestamo) { delete d.prestado_a; delete d.fecha_limite; }
+  }
+
   SCREENS.movimiento = async function (v, serie) {
     // Ingreso inicial, Ingreso adicional y Corte se retiraron del formulario; sus ramas en draw() se conservan para reactivarlos agregándolos aquí.
     var c = BOOT.catalogos, tipos = ['DESPACHO', 'DEVOLUCION', 'INVENTARIO_INICIAL_DE_APERTURA', 'CAMBIO_DE_ESTADO', 'BAJA_POR_MAL_ESTADO', 'AJUSTE_MANUAL_AUTORIZADO'];
     var prefijos = { DESPACHO: 'DS', DEVOLUCION: 'DV', PRESTAMO: 'PR', DEVOLUCION_DE_PRESTAMO: 'DV', INGRESO_INICIAL: 'IN', INGRESO_ADICIONAL: 'IN', INVENTARIO_INICIAL_DE_APERTURA: 'IN', BAJA_POR_MAL_ESTADO: 'BA', AJUSTE_MANUAL_AUTORIZADO: 'AJ', CAMBIO_DE_ESTADO: 'RE', CORTE_O_FRACCIONAMIENTO: 'CO', SOBRANTE_DE_OBRA: 'SO', TRASLADO_ENTRE_BODEGAS: 'TR' };
     var docGen = field('documento_generado', 'Documento generado', 'text', { value: (prefijos['DESPACHO'] || 'MO') + '-' + '001', readonly: 1, disabled: 1, hint: 'Generado automáticamente por el sistema.' });
-    v.innerHTML = '<div class="card"><h3>Registrar movimiento</h3><div class="note">Devoluciones, préstamos y traslados se registran como tipo de movimiento. Las devoluciones requieren seleccionar el despacho original. Bajas y ajustes quedan <b>pendientes de aprobación</b> del supervisor.</div>' +
+    v.innerHTML = '<div class="card"><h3>Registrar movimiento</h3><div class="note">Devoluciones, préstamos y traslados se registran como tipo de movimiento. Las devoluciones requieren seleccionar el despacho original. Bajas y ajustes quedan <b>pendientes de aprobación</b> del supervisor.</div><div id="mres"></div>' +
       '<form id="mf"><div class="form-grid">' + docGen + field('tipo', 'Tipo de movimiento', 'select', { options: tipos.map(function (t) { return { v: t, l: tipoLbl({ tipo: t, origen: 'APP' }) }; }), value: 'DESPACHO', empty: undefined, req: 1 }) + '<div id="sp" class="full"></div><div id="dyn" class="full form-grid"></div></div>' +
       '<div class="actions"><button class="btn pri" type="submit">Registrar</button></div></form>' + datalists() + '</div>';
-    var sel = v.querySelector('select[name=tipo]'), dyn = v.querySelector('#dyn'), cur = null;
-    seriePicker(v.querySelector('#sp'), function (s) { cur = s; draw(); }, serie);
+    var sel = v.querySelector('select[name=tipo]'), dyn = v.querySelector('#dyn'), spBox = v.querySelector('#sp'), cur = null, lote = null;
+    // En Despacho la serie se ingresa en la tabla del lote; el selector de una sola serie se usa en los demás tipos.
+    seriePicker(spBox, function (s) { cur = s; if (sel.value !== 'DESPACHO') draw(); }, sel.value === 'DESPACHO' ? '' : serie);
     function draw() {
       var t = sel.value, b = cur ? cur.bodega_actual : '';
+      spBox.hidden = t === 'DESPACHO'; lote = null;
       var bod = field('bodega', t.indexOf('INGRESO') === 0 || t === 'INVENTARIO_INICIAL_DE_APERTURA' ? 'Bodega destino' : 'Bodega origen', 'select', { options: c.bodegas, value: b, req: 1 });
       var common = field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO(), req: 1 });
       var obs = field('observacion', 'Observaciones', 'textarea', { full: 1, req: ['INGRESO_ADICIONAL', 'BAJA_POR_MAL_ESTADO', 'AJUSTE_MANUAL_AUTORIZADO'].indexOf(t) >= 0 });
@@ -488,7 +626,7 @@
       var docGenField = v.querySelector('[name=documento_generado]');
       if (docGenField) docGenField.value = (prefijos[t] || 'MO') + '-' + '001';
       var h = '';
-      if (t === 'DESPACHO') h = met + bod + common + field('documento', 'N° documento de despacho (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep', req: 1 }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) + field('proyecto', 'Ruta / proyecto', 'text', { req: 1, wide: 1 }) + field('responsable', 'Responsable que retira', 'text') + field('justificacion', 'Justificación (solo si repite documento y metraje)', 'text', { wide: 1 }) + obs;
+      if (t === 'DESPACHO') h = loteHtml() + prestamoHtml() + common + field('documento', 'N° documento de despacho (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep', req: 1 }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) + field('proyecto', 'Ruta / proyecto', 'text', { req: 1, wide: 1 }) + field('responsable', 'Responsable que retira', 'text') + field('justificacion', 'Justificación (solo si repite documento y metraje)', 'text', { wide: 1 }) + obs;
       else if (t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA') h = codigoFields(true) + met + bod + field('ubicacion', 'Ubicación', 'select', { options: c.ubicaciones, empty: '—' }) + field('estado', 'Estado inicial', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) + common + field('documento', 'Documento de ingreso (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) +
         (t === 'INVENTARIO_INICIAL_DE_APERTURA' ? field('certificado_por', 'Certificado por', 'text') : '') + obs;
       else if (t === 'INGRESO_ADICIONAL') h = met + bod + common + field('documento', 'Documento (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
@@ -504,15 +642,18 @@
       else if (t === 'BAJA_POR_MAL_ESTADO') h = met + bod + common + field('documento', 'Acta / informe (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
       else if (t === 'AJUSTE_MANUAL_AUTORIZADO') h = field('metraje', 'Ajuste (m)', 'number', { req: 1, hint: 'Positivo suma, negativo resta. Requiere aprobación.' }) + common + field('documento', 'Documento de respaldo (opcional)', 'text', { req: 1, hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
       var nueva = t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA';
-      if (!nueva) h = codigoFields(false, cur && cur.codigo) + h;
+      if (!nueva && t !== 'DESPACHO') h = codigoFields(false, cur && cur.codigo) + h;
       else h = h;
       dyn.innerHTML = h;
       bindCodigoFields(dyn, nueva);
+      if (t === 'DESPACHO') { lote = despachoLote(dyn, (spBox.querySelector('#sp-in').value.trim()) || serie || ''); bindPrestamo(dyn); }
       var j = dyn.querySelector('[name=justificacion]'); if (j) j.closest('.f').hidden = true; // solo se muestra si el servidor la pide (documento y metraje repetidos)
     }
     sel.onchange = draw; draw();
     v.querySelector('#mf').onsubmit = function (e) {
-      e.preventDefault(); var d = formData(e.target), btn = e.target.querySelector('[type=submit]'); busy(btn, true);
+      e.preventDefault(); var d = formData(e.target), btn = e.target.querySelector('[type=submit]');
+      if (d.tipo === 'DESPACHO') return despachar(d, btn);
+      busy(btn, true);
       var action = d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? 'cut' : d.tipo === 'DEVOLUCION' ? 'registerReturn' : 'registerMovement';
       api(action, d).then(function (r) { var docMsg = r.documento ? ' · Doc: ' + r.documento : ''; toast('Registrado ' + r.movimientos.join(', ') + docMsg + '. Saldo de ' + r.serie.id_serie + ': ' + fmt(r.serie.saldo_actual) + ' m', 'ok'); location.hash = '#vida/' + encodeURIComponent(d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? d.serie.toUpperCase() : r.serie.id_serie); })
         .catch(function (x) {
@@ -520,6 +661,30 @@
           var j = dyn.querySelector('[name=justificacion]'); if (j && /justificaci/i.test(x.message)) { j.closest('.f').hidden = false; j.focus(); }
         });
     };
+    /** Despacho por lotes: registra las series válidas y deja en la tabla las que fallaron, con su motivo. */
+    function despachar(d, btn) {
+      var enviadas = lote.items();
+      if (!enviadas.length) { toast('Ingrese al menos una serie.', 'err'); return; }
+      delete d.serie; prestamoData(d); d.items = enviadas.map(function (it) { return { serie: it.serie, metraje: it.metraje, bodega: it.bodega }; });
+      busy(btn, true);
+      api('registerDispatchBatch', d).then(function (r) {
+        busy(btn, false);
+        var n = r.registradas.length, mts = r.registradas.reduce(function (a, x) { return a + (+x.metraje || 0); }, 0);
+        if (n) {
+          document.getElementById('mres').innerHTML = '<div class="note">Despacho <b>' + esc(r.documento) + '</b>: ' + n + (n === 1 ? ' serie registrada' : ' series registradas') + ' (' + m(mts) + '). ' +
+            r.registradas.map(function (x) { return '<a href="#vida/' + encodeURIComponent(x.serie) + '">' + esc(x.serie) + '</a>'; }).join(', ') + '</div>';
+          var doc = dyn.querySelector('[name=documento]'); if (doc) doc.value = r.documento; // las series corregidas se registran con el mismo documento
+        }
+        if (!r.errores.length) {
+          toast('Despacho ' + r.documento + ' registrado: ' + n + (n === 1 ? ' serie' : ' series') + ', ' + fmt(mts) + ' m.', 'ok');
+          if (n === 1) { location.hash = '#vida/' + encodeURIComponent(r.registradas[0].serie); return; }
+          draw(); return;
+        }
+        lote.aplicar(enviadas, r);
+        toast((n ? n + ' registradas. ' : 'No se registró ninguna serie. ') + r.errores.length + ' con error: corríjalas (en rojo) y vuelva a registrar.', 'err');
+        var j = dyn.querySelector('[name=justificacion]'); if (j && r.errores.some(function (x) { return /justificaci/i.test(x.error); })) { j.closest('.f').hidden = false; j.focus(); }
+      }).catch(function (x) { busy(btn, false); toast(x.message, 'err'); });
+    }
   };
 
   /* ============================ 6. devolución ============================ */

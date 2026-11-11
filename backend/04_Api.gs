@@ -7,10 +7,10 @@
 var FS_READ_ACTIONS = {
   bootstrap: 'bootstrap', dashboard: 'dashboard', inventory: 'inventory', searchSeries: 'searchSeries', rollLife: 'rollLife',
   alerts: 'alerts', loans: 'loans', surpluses: 'surpluses', report: 'report', projection: 'projection', audit: 'audit',
-  pendingApprovals: 'pendingApprovals', catalogs: 'catalogs', dispatchesOf: 'dispatchesOf'
+  pendingApprovals: 'pendingApprovals', catalogs: 'catalogs', dispatchesOf: 'dispatchesOf', seriesInfo: 'seriesInfo'
 };
 var FS_WRITE_ACTIONS = {
-  registerMovement: 'registerMovement', registerReturn: 'registerReturn', registerLoan: 'registerLoan', returnLoan: 'returnLoan',
+  registerMovement: 'registerMovement', registerDispatchBatch: 'registerDispatchBatch', registerReturn: 'registerReturn', registerLoan: 'registerLoan', returnLoan: 'returnLoan',
   setLoanState: 'setLoanState', registerSurplus: 'registerSurplus', confirmSurplus: 'confirmSurplus', transfer: 'transfer', cut: 'cut',
   approve: 'approve', annulMovement: 'annulMovement', updateAlert: 'updateAlert', linkFamily: 'linkFamily', saveCatalog: 'saveCatalog',
   saveParam: 'saveParam', saveSupplyParam: 'saveSupplyParam', saveArticle: 'saveArticle', recalc: 'recalc'

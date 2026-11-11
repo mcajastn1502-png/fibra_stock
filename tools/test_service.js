@@ -62,4 +62,44 @@ ok('reporte no utilizable', () => adm.report({ tipo: 'no_utilizable' }).seccione
 ok('bitácora', () => adm.audit({}).length);
 ok('búsqueda por documento', () => bod.searchSeries({ q: '518855605' }).map(s => s.id_serie));
 ok('anular (admin)', () => adm.annulMovement({ id_movimiento: d1.movimientos[0], motivo: 'prueba' }));
+
+// ---- Despacho por lotes (hasta 25 series, datos comunes, registra las válidas)
+const lote = store.all('SERIES').filter(s => s.estado_actual === 'DISPONIBLE' && +s.saldo_actual > 300 && s.id_serie !== S.id_serie).slice(0, 3);
+const comun = { fecha: '2026-10-13', departamento: 'PLANTA EXTERNA', contratista: 'QRTELECOM', proyecto: 'RUTA LOTE F02' };
+ok('seriesInfo autocompleta código, saldo y bodega', () => { const r = bod.seriesInfo({ series: [lote[0].id_serie.toLowerCase(), 'NOEXISTE-999'] });
+  if (r[0].codigo !== lote[0].codigo || +r[0].saldo_actual !== +lote[0].saldo_actual || r[0].bodega_actual !== lote[0].bodega_actual || r[1].existe) throw new Error(JSON.stringify(r)); return r.map(x => x.id_serie + ':' + x.existe); });
+err('lote sin series', () => bod.registerDispatchBatch({ ...comun, items: [] }), /al menos una serie/);
+err('lote de 26 series', () => bod.registerDispatchBatch({ ...comun, items: Array.from({ length: 26 }, (_, i) => ({ serie: 'X' + i, metraje: 1 })) }), /Máximo 25/);
+err('lote sin departamento', () => bod.registerDispatchBatch({ ...comun, departamento: '', items: [{ serie: lote[0].id_serie, metraje: 10 }] }), /departamento/);
+err('consulta no registra lote', () => con.registerDispatchBatch({ ...comun, items: [{ serie: lote[0].id_serie, metraje: 10 }] }), /Permiso/);
+const rl = ok('lote: 3 válidas + inexistente + repetida + saldo excedido', () => {
+  const r = bod.registerDispatchBatch({ ...comun, items: [
+    { serie: lote[0].id_serie, metraje: lote[0].saldo_actual, bodega: lote[0].bodega_actual },   // saldo completo
+    { serie: lote[1].id_serie, metraje: 100, bodega: lote[1].bodega_actual },                    // parcial
+    { serie: 'NOEXISTE-999', metraje: 50 },
+    { serie: lote[1].id_serie, metraje: 10 },                                                     // repetida
+    { serie: lote[2].id_serie, metraje: +lote[2].saldo_actual + 1 } ] });                         // excede saldo
+  if (r.registradas.length !== 2 || r.errores.length !== 3) throw new Error(JSON.stringify(r.errores));
+  if (!/^DS-\d{6}$/.test(r.documento)) throw new Error('documento ' + r.documento);
+  return { doc: r.documento, ok: r.registradas.map(x => x.serie + ' ' + x.metraje + 'm saldo ' + x.saldo_actual), err: r.errores.map(e => e.fila + ':' + e.error.slice(0, 30)) };
+});
+ok('lote: estados y documento común', () => {
+  const s0 = store.all('SERIES').find(s => s.id_serie === lote[0].id_serie), s1 = store.all('SERIES').find(s => s.id_serie === lote[1].id_serie);
+  const movs = store.all('MOVIMIENTOS').filter(m => m.documento === rl.doc);
+  if (s0.estado_actual !== 'DESPACHADA' || +s0.saldo_actual !== 0 || +s1.saldo_actual !== +lote[1].saldo_actual - 100 || movs.length !== 2) throw new Error([s0.estado_actual, s0.saldo_actual, s1.saldo_actual, movs.length].join(' '));
+  return [s0.estado_actual, s1.estado_actual, movs.length + ' movimientos con ' + rl.doc];
+});
+ok('lote: reintento con mismo documento solo de la serie corregida', () => { const r = bod.registerDispatchBatch({ ...comun, documento: rl.doc, items: [{ serie: lote[2].id_serie, metraje: 200 }] });
+  if (r.registradas.length !== 1 || r.errores.length || r.documento !== rl.doc) throw new Error(JSON.stringify(r)); return r.documento; });
+const libre = store.all('SERIES').find(s => s.estado_actual === 'DISPONIBLE' && +s.saldo_actual > 300 && !lote.some(x => x.id_serie === s.id_serie));
+err('préstamo sin "prestado a"', () => bod.registerDispatchBatch({ ...comun, prestamo: true, responsable: 'JUAN PEREZ', fecha_limite: '2026-10-28', items: [{ serie: libre.id_serie, metraje: 50 }] }), /quién se presta/);
+err('préstamo sin fecha límite', () => bod.registerDispatchBatch({ ...comun, prestamo: true, responsable: 'JUAN PEREZ', prestado_a: 'LUIS TORRES', items: [{ serie: libre.id_serie, metraje: 50 }] }), /fecha límite/);
+err('préstamo con límite anterior', () => bod.registerDispatchBatch({ ...comun, prestamo: true, responsable: 'JUAN PEREZ', prestado_a: 'LUIS TORRES', fecha_limite: '2026-10-01', items: [{ serie: libre.id_serie, metraje: 50 }] }), /anterior/);
+ok('despacho marcado como préstamo', () => { const r = bod.registerDispatchBatch({ ...comun, prestamo: true, responsable: 'JUAN PEREZ', prestado_a: 'Luis Torres', fecha_limite: '2026-10-28', items: [{ serie: libre.id_serie, metraje: 50 }] });
+  const mv = store.all('MOVIMIENTOS').find(x => x.id_movimiento === r.movimientos[0]);
+  if (mv.tipo !== 'DESPACHO' || mv.prestamo !== 'SI' || mv.prestado_a !== 'Luis Torres' || mv.fecha_limite_devolucion !== '2026-10-28' || mv.responsable !== 'JUAN PEREZ') throw new Error(JSON.stringify(mv));
+  return [mv.tipo, mv.prestamo, mv.prestado_a, mv.fecha_limite_devolucion]; });
+ok('despacho normal no marca préstamo', () => { const mv = store.all('MOVIMIENTOS').filter(x => x.documento === rl.doc)[0]; if (mv.prestamo || mv.prestado_a) throw new Error('marcado'); return 'ok'; });
+ok('lote: todas fallan → no registra nada', () => { const n = store.all('MOVIMIENTOS').length, r = bod.registerDispatchBatch({ ...comun, items: [{ serie: 'NOEXISTE-1', metraje: 5 }] });
+  if (r.ok || r.registradas.length || store.all('MOVIMIENTOS').length !== n) throw new Error('registró'); return r.errores[0].error; });
 console.log(`\n${pass} correctas, ${failn} fallidas`);
