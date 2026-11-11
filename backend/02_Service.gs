@@ -71,6 +71,7 @@ FS.Service = function (store, user) {
         estados: FS.ESTADOS, bodegas: FS.BODEGAS, ubicaciones: FS.UBICACIONES, tipos_movimiento: Object.keys(FS.TIPOS_MOV),
         departamentos: vals('DEPARTAMENTO'), contratistas: vals('CONTRATISTA'), estados_prestamo: FS.ESTADOS_PRESTAMO,
         hilos: FS.HILOS_STD, tipos_alerta: Object.keys(FS.ALERTAS),
+        rutas: (function () { var o = {}; store.all('MOVIMIENTOS').forEach(function (x) { var r = U.str(x.proyecto_ruta).trim(); if (r && FS.isMovVigente(x)) o[r] = 1; }); return Object.keys(o).sort(); })(),
         articulos: arts.map(function (a) { return { codigo: a.codigo, familia: a.familia, descripcion: a.descripcion_original, hilos: a.hilos, span: a.span }; })
       }
     };
@@ -309,12 +310,25 @@ FS.Service = function (store, user) {
     need('registrar');
     var s = getSerie(p.serie); if (!s) fail('La serie no existe.');
     var m = baseMov(p, s); m.tipo = 'DEVOLUCION'; m.signo = 1; m.metraje = vMetraje(p.metraje);
-    m.bodega_destino = vBodega(p.bodega, 'Bodega receptora');
-    m.estado_resultante = p.estado_material === 'MAL_ESTADO' ? 'MAL_ESTADO' : 'DISPONIBLE';
-    if (U.isEmpty(p.motivo)) fail('Indique el motivo de la devolución.');
-    m.observacion_original = 'MOTIVO: ' + p.motivo + (p.observacion ? ' | ' + p.observacion : '');
-    var desp = null;
-    if (p.id_despacho && p.id_despacho !== 'SIN_REFERENCIA') {
+    m.bodega_destino = vBodega(p.bodega, 'Bodega destino');
+    m.estado_resultante = ['MAL_ESTADO', 'RESERVADA'].indexOf(p.estado_material) >= 0 ? p.estado_material : 'DISPONIBLE';
+    // Código de artículo editado en el formulario: se guarda en la devolución si existe en el catálogo.
+    var cod = U.key(p.codigo);
+    if (cod && cod !== s.codigo) {
+      if (!store.all('ARTICULOS').some(function (a) { return a.codigo === cod; })) fail('El código ' + p.codigo + ' no existe en el catálogo de artículos.');
+      m.codigo = cod;
+    }
+    if (!U.isEmpty(p.motivo)) m.observacion_original = 'MOTIVO: ' + p.motivo + (p.observacion ? ' | ' + p.observacion : '');
+    var desp = null, idDesp = p.id_despacho;
+    if (!idDesp || idDesp === 'AUTO') {
+      // Sin despacho elegido: se vincula al último despacho de la serie con metros pendientes suficientes.
+      var cand = FS.consumptionLines(store.all('MOVIMIENTOS').filter(function (x) { return x.id_serie === s.id_serie; }))
+        .filter(function (c) { return c.consumo >= m.metraje; })
+        .sort(function (a, b) { return a.fecha === b.fecha ? (a.id_movimiento < b.id_movimiento ? 1 : -1) : (a.fecha < b.fecha ? 1 : -1); });
+      idDesp = cand.length ? cand[0].id_movimiento : '';
+    }
+    if (idDesp && idDesp !== 'SIN_REFERENCIA') {
+      p.id_despacho = idDesp;
       desp = store.all('MOVIMIENTOS').filter(function (x) { return x.id_movimiento === p.id_despacho && x.tipo === 'DESPACHO' && FS.isMovVigente(x); })[0];
       if (!desp || desp.id_serie !== s.id_serie) fail('El despacho seleccionado no pertenece a esta serie.');
       var ya = store.all('MOVIMIENTOS').filter(function (x) { return x.id_vinculado === desp.id_movimiento && FS.isMovVigente(x) && (x.tipo === 'DEVOLUCION' || x.tipo === 'SOBRANTE_DE_OBRA'); })
@@ -332,7 +346,7 @@ FS.Service = function (store, user) {
       var a = FS.mkAlert('DEVOLUCION_SIN_REFERENCIA', { id_serie: s.id_serie, id_movimiento: m.id_movimiento, campo: 'DOCUMENTO', encontrado: m.metraje + ' m', esperado: 'Despacho relacionado', creada_en: now });
       a.id_alerta = store.nextId('ALE'); store.append('ALERTAS', [a]); self.recalc();
     }
-    res.resumen = desp ? { despachado: +desp.metraje, devuelto: m.metraje, consumo_preliminar: +desp.metraje - m.metraje, completa: +desp.metraje === m.metraje } : { devolucion_sin_referencia: true };
+    res.resumen = desp ? { despacho: desp.documento, despachado: +desp.metraje, devuelto: m.metraje, consumo_preliminar: +desp.metraje - m.metraje, completa: +desp.metraje === m.metraje } : { devolucion_sin_referencia: true };
     res.documento = m.documento;
     return res;
   };

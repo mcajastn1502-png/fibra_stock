@@ -44,6 +44,7 @@
     var c = BOOT.catalogos;
     return '<datalist id="dl-dep">' + c.departamentos.map(function (d) { return '<option value="' + esc(d) + '">'; }).join('') + '</datalist>' +
       '<datalist id="dl-con">' + c.contratistas.map(function (d) { return '<option value="' + esc(d) + '">'; }).join('') + '</datalist>' +
+      '<datalist id="dl-ruta">' + (c.rutas || []).map(function (d) { return '<option value="' + esc(d) + '">'; }).join('') + '</datalist>' +
       '<datalist id="dl-art">' + c.articulos.map(function (a) { return '<option value="' + esc(a.codigo) + '">' + esc(a.descripcion) + '</option>'; }).join('') + '</datalist>';
   }
 
@@ -634,18 +635,19 @@
         field('proyecto', 'Proyecto / ruta', 'text', { wide: 1, hint: 'Obligatorio al reservar.' }) + field('departamento', 'Departamento', 'text', { list: 'dl-dep' }) + field('contratista', 'Contratista', 'text', { list: 'dl-con' }) +
         field('responsable', 'Solicitado por', 'text') + field('documento', 'N° de solicitud / documento', 'text') + common + obs;
       else if (t === 'CORTE_O_FRACCIONAMIENTO') h = met + field('serie_derivada', 'Serie derivada', 'text', { hint: 'Vacío = se genera SERIE-1-001, -002…' }) + common + obs;
-      else if (t === 'DEVOLUCION') h = met + bod + common + field('id_despacho', 'Despacho original', 'select', { options: [], req: 1, hint: 'Seleccione el despacho relacionado con esta devolución.' }) + field('certificado_por', 'Certificado por', 'text') +
-        field('metraje', 'Metraje devuelto (m)', 'number', { req: 1 }) + field('fecha', 'Fecha de devolución', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
-        field('bodega', 'Bodega receptora', 'select', { options: c.bodegas, req: 1 }) + field('estado_material', 'Estado del material', 'select', { options: ['DISPONIBLE', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) +
-        field('motivo', 'Motivo de devolución', 'text', { req: 1, wide: 1 }) + field('documento', 'Documento de devolución', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) +
-        '<div class="full note" id="calc" hidden></div>';
+      else if (t === 'DEVOLUCION') h = met + field('bodega', 'Bodega destino', 'select', { options: c.bodegas, value: b, req: 1 }) +
+        field('fecha', 'Fecha de devolución', 'date', { value: todayISO(), max: todayISO(), req: 1 }) + field('certificado_por', 'Certificado por', 'text') +
+        field('estado_material', 'Estado del material', 'select', { options: ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO'], value: 'DISPONIBLE', empty: undefined }) +
+        field('proyecto', 'Sobrante ruta', 'text', { list: 'dl-ruta', wide: 1, hint: 'Ruta o proyecto de donde regresa el sobrante.' }) +
+        field('documento', 'Documento de devolución', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 });
       else if (t === 'BAJA_POR_MAL_ESTADO') h = met + bod + common + field('documento', 'Acta / informe (opcional)', 'text', { hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
       else if (t === 'AJUSTE_MANUAL_AUTORIZADO') h = field('metraje', 'Ajuste (m)', 'number', { req: 1, hint: 'Positivo suma, negativo resta. Requiere aprobación.' }) + common + field('documento', 'Documento de respaldo (opcional)', 'text', { req: 1, hint: 'Si se deja vacío, se genera automáticamente.' }) + obs;
       var nueva = t === 'INGRESO_INICIAL' || t === 'INVENTARIO_INICIAL_DE_APERTURA';
-      if (!nueva && t !== 'DESPACHO') h = codigoFields(false, cur && cur.codigo) + h;
+      if (!nueva && t !== 'DESPACHO') h = codigoFields(t === 'DEVOLUCION', cur && cur.codigo) + h;
       else h = h;
       dyn.innerHTML = h;
-      bindCodigoFields(dyn, nueva);
+      bindCodigoFields(dyn, nueva || t === 'DEVOLUCION');
+      spBox.querySelector('#sp-info').hidden = t === 'DEVOLUCION' && !!cur; // en Devolución no se muestra el resumen de la serie (sí "Serie no registrada")
       if (t === 'DESPACHO') { lote = despachoLote(dyn, (spBox.querySelector('#sp-in').value.trim()) || serie || ''); bindPrestamo(dyn); }
       var j = dyn.querySelector('[name=justificacion]'); if (j) j.closest('.f').hidden = true; // solo se muestra si el servidor la pide (documento y metraje repetidos)
     }
@@ -655,7 +657,7 @@
       if (d.tipo === 'DESPACHO') return despachar(d, btn);
       busy(btn, true);
       var action = d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? 'cut' : d.tipo === 'DEVOLUCION' ? 'registerReturn' : 'registerMovement';
-      api(action, d).then(function (r) { var docMsg = r.documento ? ' · Doc: ' + r.documento : ''; toast('Registrado ' + r.movimientos.join(', ') + docMsg + '. Saldo de ' + r.serie.id_serie + ': ' + fmt(r.serie.saldo_actual) + ' m', 'ok'); location.hash = '#vida/' + encodeURIComponent(d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? d.serie.toUpperCase() : r.serie.id_serie); })
+      api(action, d).then(function (r) { var docMsg = (r.documento ? ' · Doc: ' + r.documento : '') + (r.resumen ? (r.resumen.despacho ? ' · vinculada al despacho ' + r.resumen.despacho : r.resumen.devolucion_sin_referencia ? ' · sin despacho relacionado (queda en Revisión)' : '') : ''); toast('Registrado ' + r.movimientos.join(', ') + docMsg + '. Saldo de ' + r.serie.id_serie + ': ' + fmt(r.serie.saldo_actual) + ' m', 'ok'); location.hash = '#vida/' + encodeURIComponent(d.tipo === 'CORTE_O_FRACCIONAMIENTO' ? d.serie.toUpperCase() : r.serie.id_serie); })
         .catch(function (x) {
           busy(btn, false); toast(x.message, 'err');
           var j = dyn.querySelector('[name=justificacion]'); if (j && /justificaci/i.test(x.message)) { j.closest('.f').hidden = false; j.focus(); }

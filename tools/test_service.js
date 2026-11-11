@@ -100,6 +100,23 @@ ok('despacho marcado como préstamo', () => { const r = bod.registerDispatchBatc
   if (mv.tipo !== 'DESPACHO' || mv.prestamo !== 'SI' || mv.prestado_a !== 'Luis Torres' || mv.fecha_limite_devolucion !== '2026-10-28' || mv.responsable !== 'JUAN PEREZ') throw new Error(JSON.stringify(mv));
   return [mv.tipo, mv.prestamo, mv.prestado_a, mv.fecha_limite_devolucion]; });
 ok('despacho normal no marca préstamo', () => { const mv = store.all('MOVIMIENTOS').filter(x => x.documento === rl.doc)[0]; if (mv.prestamo || mv.prestado_a) throw new Error('marcado'); return 'ok'; });
+// ---- Devolución desde Registrar movimiento: sin despacho elegido (vínculo automático), sin motivo, RESERVADA y código editable
+const sd = store.all('SERIES').find(s => s.estado_actual === 'DISPONIBLE' && +s.saldo_actual > 600 && !lote.some(x => x.id_serie === s.id_serie) && s.id_serie !== libre.id_serie);
+const dA = bod.registerDispatchBatch({ ...comun, fecha: '2026-10-10', documento: 'DOC-A', items: [{ serie: sd.id_serie, metraje: 100 }] });
+const dB = bod.registerDispatchBatch({ ...comun, fecha: '2026-10-12', documento: 'DOC-B', items: [{ serie: sd.id_serie, metraje: 300 }] });
+ok('devolución sin despacho → vincula al último con pendiente', () => { const r = bod.registerReturn({ serie: sd.id_serie, metraje: 50, bodega: sd.bodega_actual, proyecto: 'RUTA SOBRANTE X', fecha: '2026-10-13' });
+  const mv = store.all('MOVIMIENTOS').find(x => x.id_movimiento === r.movimientos[0]);
+  if (r.resumen.despacho !== 'DOC-B' || mv.id_vinculado !== dB.movimientos[0] || mv.proyecto_ruta !== 'RUTA SOBRANTE X') throw new Error(JSON.stringify([r.resumen, mv.id_vinculado, mv.proyecto_ruta])); return r.resumen; });
+ok('devolución mayor a lo pendiente de todos los despachos → sin referencia', () => { const r = bod.registerReturn({ serie: sd.id_serie, metraje: 260, bodega: sd.bodega_actual, fecha: '2026-10-13' });
+  if (r.resumen.despacho) throw new Error('vinculó a ' + r.resumen.despacho); return r.resumen; }); // B tiene 250 pendientes y A 100: ninguno alcanza → sin referencia
+ok('devolución sin referencia genera alerta', () => { const a = store.all('ALERTAS').filter(x => x.id_serie === sd.id_serie && x.tipo === 'DEVOLUCION_SIN_REFERENCIA'); if (!a.length) throw new Error('sin alerta'); return a.length; });
+ok('devolución con estado RESERVADA', () => { const r = bod.registerReturn({ serie: sd.id_serie, metraje: 20, bodega: sd.bodega_actual, estado_material: 'RESERVADA', fecha: '2026-10-13' });
+  const mv = store.all('MOVIMIENTOS').find(x => x.id_movimiento === r.movimientos[0]); if (mv.estado_resultante !== 'RESERVADA') throw new Error(mv.estado_resultante); return mv.estado_resultante; });
+err('devolución con código inexistente', () => bod.registerReturn({ serie: sd.id_serie, metraje: 5, bodega: sd.bodega_actual, codigo: 'NO-EXISTE-1', fecha: '2026-10-13' }), /no existe en el catálogo/);
+ok('devolución con código editado del catálogo', () => { const otro = store.all('ARTICULOS').find(a => a.codigo !== sd.codigo);
+  const r = bod.registerReturn({ serie: sd.id_serie, metraje: 5, bodega: sd.bodega_actual, codigo: otro.codigo.toLowerCase(), fecha: '2026-10-13' });
+  const mv = store.all('MOVIMIENTOS').find(x => x.id_movimiento === r.movimientos[0]); if (mv.codigo !== otro.codigo) throw new Error(mv.codigo); return mv.codigo; });
+ok('rutas sugeridas en bootstrap', () => { const r = bod.bootstrap().catalogos.rutas; if (r.indexOf('RUTA SOBRANTE X') < 0) throw new Error('falta'); return r.length; });
 ok('lote: todas fallan → no registra nada', () => { const n = store.all('MOVIMIENTOS').length, r = bod.registerDispatchBatch({ ...comun, items: [{ serie: 'NOEXISTE-1', metraje: 5 }] });
   if (r.ok || r.registradas.length || store.all('MOVIMIENTOS').length !== n) throw new Error('registró'); return r.errores[0].error; });
 console.log(`\n${pass} correctas, ${failn} fallidas`);
