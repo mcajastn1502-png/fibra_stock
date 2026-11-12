@@ -50,7 +50,7 @@
   function passField(name, label, o) {
     o = o || {}; var id = 'f_' + name + '_' + Math.random().toString(36).slice(2, 7);
     return '<div class="f"><label for="' + id + '">' + esc(label) + (o.req ? ' <span class="req">*</span>' : '') + '</label><div class="row pw-row">' +
-      '<input id="' + id + '" name="' + name + '" type="password" autocomplete="new-password" style="flex:1;min-width:0">' +
+      '<input id="' + id + '" name="' + name + '" type="password" autocomplete="' + (o.auto || 'new-password') + '" style="flex:1;min-width:0">' +
       '<button type="button" class="btn sm pw-tog" aria-controls="' + id + '" aria-pressed="false" title="Mostrar la contraseña">Mostrar</button></div>' +
       (o.hint ? '<span class="hint">' + o.hint + '</span>' : '') + '</div>';
   }
@@ -131,7 +131,7 @@
   /** forzado = ingresó con la contraseña temporal enviada por correo: debe definir una nueva. */
   function changePassword(forzado) {
     modal('<h3>Cambiar contraseña</h3>' + (forzado === true ? '<div class="note">Ingresó con una contraseña temporal. Defina ahora su nueva contraseña.</div>' : '') +
-      '<div class="form-grid">' + field('actual', forzado === true ? 'Contraseña temporal' : 'Contraseña actual', 'password', { req: 1 }) + field('nueva', 'Nueva contraseña (mín. 8)', 'password', { req: 1 }) + '</div><div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) {
+      '<div class="form-grid">' + passField('actual', forzado === true ? 'Contraseña temporal' : 'Contraseña actual', { req: 1, auto: 'current-password' }) + passField('nueva', 'Nueva contraseña', { req: 1, hint: 'Mínimo 8 caracteres.' }) + '</div><div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) {
       md.querySelector('#ok').onclick = function () { var d = formData(md); api('changePassword', d).then(function () { if (BOOT && BOOT.user) BOOT.user.debe_cambiar = false; toast('Contraseña actualizada.', 'ok'); close(); }).catch(function (x) { toast(x.message, 'err'); }); };
     });
   }
