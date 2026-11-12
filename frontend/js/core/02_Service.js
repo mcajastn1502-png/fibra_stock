@@ -243,28 +243,58 @@ FS.Service = function (store, user) {
   self.seriesInfo = function (p) {
     need('leer');
     var idx = {}; store.all('SERIES').forEach(function (s) { idx[s.id_serie] = s; });
-    var ult = null;
+    var ult = null, pedidas = {}, movsDe = {};
+    (p.series || []).forEach(function (raw) { pedidas[U.serieNorm(raw)] = 1; });
+    store.all('MOVIMIENTOS').forEach(function (m) { if (pedidas[m.id_serie]) (movsDe[m.id_serie] = movsDe[m.id_serie] || []).push(m); });
     return (p.series || []).slice(0, FS.MAX_SERIES_DESPACHO).map(function (raw) {
       var k = U.serieNorm(raw), s = idx[k];
       if (!s) return { serie: U.str(raw).trim(), id_serie: k, existe: false };
       var o = { serie: U.str(raw).trim(), id_serie: k, existe: true, codigo: s.codigo, descripcion: s.descripcion, hilos: s.hilos, saldo_actual: s.saldo_actual,
         bodega_actual: s.bodega_actual, estado_actual: s.estado_actual, estado_saldo: s.estado_saldo, reservado_departamento: '' };
       if (s.estado_actual === 'RESERVADA') { ult = ult || FS.ultimoMovEstado(store.all('MOVIMIENTOS')); o.reservado_departamento = (ult[k] || {}).departamento || ''; }
+      // Para devoluciones: metros pendientes del despacho más reciente que aún tiene metros sin devolver.
+      var pend = FS.consumptionLines(movsDe[k] || []).filter(function (c) { return c.consumo > 0; })
+        .sort(function (a, b) { return a.fecha === b.fecha ? (a.id_movimiento < b.id_movimiento ? 1 : -1) : (a.fecha < b.fecha ? 1 : -1); })[0];
+      o.pendiente_devolucion = pend ? pend.consumo : 0; o.despacho_pendiente = pend ? pend.documento : '';
       return o;
     });
   };
 
   /**
-   * Despacho de varias series (hasta FS.MAX_SERIES_DESPACHO) con los mismos datos de despacho y un solo documento.
-   * Los datos comunes inválidos rechazan todo el lote; cada serie se valida por separado: se registran las válidas
-   * y se devuelven las que fallaron con su motivo. Un solo recálculo al final.
+   * Núcleo de los registros por lotes (hasta FS.MAX_SERIES_DESPACHO series, mismos datos comunes y un solo documento).
+   * Cada serie se valida por separado con o.armar(item, documento) → { m, desp? }: se registran las válidas y se
+   * devuelven las que fallaron con su motivo. o.antes(armados) corre justo antes de guardar. Un solo recálculo al final.
    */
-  self.registerDispatchBatch = function (p) {
-    need('registrar');
+  function registrarLote(p, o) {
     var items = (p.items || []).filter(function (x) { return x && !U.isEmpty(x.serie); });
     if (!items.length) fail('Ingrese al menos una serie.');
-    if (items.length > FS.MAX_SERIES_DESPACHO) fail('Máximo ' + FS.MAX_SERIES_DESPACHO + ' series por despacho.');
+    if (items.length > FS.MAX_SERIES_DESPACHO) fail('Máximo ' + FS.MAX_SERIES_DESPACHO + ' series por ' + o.nombre + '.');
     vFecha(p.fecha || today);
+    var documento = U.str(p.documento).trim() || store.nextId(o.prefijo);
+    var vistos = {}, armados = [], errores = [];
+    items.forEach(function (it, i) {
+      try {
+        var k = U.serieNorm(it.serie);
+        if (vistos[k]) fail('Serie repetida en este ' + o.nombre + '.');
+        vistos[k] = 1;
+        armados.push(o.armar(it, documento));
+      } catch (e) { errores.push({ fila: i, serie: U.str(it.serie).trim(), error: e.message }); }
+    });
+    var res = { ok: armados.length > 0, documento: documento, movimientos: [], registradas: [], errores: errores };
+    if (!armados.length) return res;
+    if (o.antes) o.antes(armados);
+    var r = save(armados.map(function (a) { return a.m; }), o.accion);
+    res.movimientos = r.movimientos; res.recalculo = r.recalculo;
+    res.registradas = armados.map(function (a) {
+      var s = getSerie(a.m.id_serie) || {};
+      return { serie: a.m.id_serie, id_movimiento: a.m.id_movimiento, metraje: a.m.metraje, saldo_actual: s.saldo_actual, despacho: a.desp ? a.desp.documento : '' };
+    });
+    return res;
+  }
+
+  /** Despacho de varias series con los mismos datos de despacho (y, si se marca, datos de préstamo). */
+  self.registerDispatchBatch = function (p) {
+    need('registrar');
     if (U.isEmpty(p.departamento)) fail('El departamento es obligatorio.');
     if (U.isEmpty(p.proyecto)) fail('La ruta o proyecto es obligatorio.');
     if (/STOCK\s*BODEGA/.test(U.key(p.proyecto))) fail('Un despacho no puede tener como ruta "STOCK BODEGA".');
@@ -277,38 +307,48 @@ FS.Service = function (store, user) {
       if (lim.iso < vFecha(p.fecha || today)) fail('Préstamo: la fecha límite no puede ser anterior a la fecha del despacho.');
       limite = lim.iso;
     }
-    var documento = U.str(p.documento).trim() || store.nextId(FS.PREFIJOS_DOC.DESPACHO);
-    var vistos = {}, movs = [], errores = [];
-    items.forEach(function (it, i) {
-      try {
-        var k = U.serieNorm(it.serie);
-        if (vistos[k]) fail('Serie repetida en este despacho.');
-        vistos[k] = 1;
-        var s = getSerie(k);
-        if (!s) fail('La serie no existe. Registre primero su inventario de apertura.');
-        var m = baseMov(Object.assign({}, p, { tipo: 'DESPACHO', serie: it.serie, documento: documento }), s);
-        m.metraje = vMetraje(it.metraje); m.bodega_origen = vBodega(it.bodega || s.bodega_actual, 'Bodega origen');
-        checkSalida(s, m.metraje, m.bodega_origen, 'DESPACHO');
-        m.estado_resultante = (s.saldo_actual - m.metraje) > 0 ? (s.estado_actual === 'RESERVADA' ? 'RESERVADA' : 'DISPONIBLE') : 'DESPACHADA';
-        if (prest) { m.prestamo = 'SI'; m.prestado_a = U.str(p.prestado_a).trim(); m.fecha_limite_devolucion = limite; }
-        duplicateCheck(m, p.justificacion);
-        if (p.justificacion) m.observacion_original = (m.observacion_original + ' | JUSTIFICACIÓN: ' + p.justificacion).replace(/^ \| /, '');
-        movs.push(m);
-      } catch (e) { errores.push({ fila: i, serie: U.str(it.serie).trim(), error: e.message }); }
-    });
-    var res = { ok: movs.length > 0, documento: documento, movimientos: [], registradas: [], errores: errores };
-    if (!movs.length) return res;
-    var r = save(movs, 'REGISTRAR_DESPACHO');
-    res.movimientos = r.movimientos;
-    res.registradas = movs.map(function (m) { var s = getSerie(m.id_serie) || {}; return { serie: m.id_serie, id_movimiento: m.id_movimiento, metraje: m.metraje, saldo_actual: s.saldo_actual }; });
-    res.recalculo = r.recalculo;
-    return res;
+    return registrarLote(p, { nombre: 'despacho', prefijo: FS.PREFIJOS_DOC.DESPACHO, accion: 'REGISTRAR_DESPACHO', armar: function (it, documento) {
+      var s = getSerie(it.serie);
+      if (!s) fail('La serie no existe. Registre primero su inventario de apertura.');
+      var m = baseMov(Object.assign({}, p, { tipo: 'DESPACHO', serie: it.serie, documento: documento }), s);
+      m.metraje = vMetraje(it.metraje); m.bodega_origen = vBodega(it.bodega || s.bodega_actual, 'Bodega origen');
+      checkSalida(s, m.metraje, m.bodega_origen, 'DESPACHO');
+      m.estado_resultante = (s.saldo_actual - m.metraje) > 0 ? (s.estado_actual === 'RESERVADA' ? 'RESERVADA' : 'DISPONIBLE') : 'DESPACHADA';
+      if (prest) { m.prestamo = 'SI'; m.prestado_a = U.str(p.prestado_a).trim(); m.fecha_limite_devolucion = limite; }
+      duplicateCheck(m, p.justificacion);
+      if (p.justificacion) m.observacion_original = (m.observacion_original + ' | JUSTIFICACIÓN: ' + p.justificacion).replace(/^ \| /, '');
+      return { m: m };
+    } });
   };
 
-  /** Devolución relacionada con el despacho original (o sin referencia → Revisión). */
-  self.registerReturn = function (p) {
+  /** Devolución de varias series (mismos datos comunes); cada una se vincula sola a su despacho pendiente. */
+  self.registerReturnBatch = function (p) {
     need('registrar');
-    var s = getSerie(p.serie); if (!s) fail('La serie no existe.');
+    return registrarLote(p, { nombre: 'registro de devolución', prefijo: FS.PREFIJOS_DOC.DEVOLUCION, accion: 'REGISTRAR_DEVOLUCION',
+      armar: function (it, documento) {
+        var s = getSerie(it.serie); if (!s) fail('La serie no existe.');
+        return armarDevolucion(Object.assign({}, p, { serie: it.serie, metraje: it.metraje, bodega: it.bodega, codigo: it.codigo, documento: documento, id_despacho: '' }), s);
+      },
+      antes: function (armados) { armados.forEach(function (a) { if (!a.desp) alertaSinReferencia(a.m); }); } });
+  };
+
+  /** Inventario de apertura de varias series nuevas (mismos datos comunes). */
+  self.registerOpeningBatch = function (p) {
+    need('registrar');
+    var estado = ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO'].indexOf(p.estado) >= 0 ? p.estado : 'DISPONIBLE';
+    return registrarLote(p, { nombre: 'inventario de apertura', prefijo: FS.PREFIJOS_DOC.INVENTARIO_INICIAL_DE_APERTURA, accion: 'REGISTRAR_APERTURA', armar: function (it, documento) {
+      var s = getSerie(it.serie);
+      if (s) fail('La serie ya existe (saldo ' + s.saldo_actual + ' m). Use Devolución o Ajuste según corresponda.');
+      if (U.isEmpty(it.codigo)) fail('El código de artículo es obligatorio.');
+      if (!store.all('ARTICULOS').some(function (a) { return a.codigo === U.key(it.codigo); })) fail('El código ' + it.codigo + ' no existe en el catálogo de artículos.');
+      var m = baseMov(Object.assign({}, p, { tipo: 'INVENTARIO_INICIAL_DE_APERTURA', serie: it.serie, codigo: it.codigo, documento: documento }), null);
+      m.metraje = vMetraje(it.metraje); m.bodega_destino = vBodega(it.bodega, 'Bodega destino'); m.estado_resultante = estado;
+      return { m: m };
+    } });
+  };
+
+  /** Arma y valida una devolución sin guardarla: { m, desp } (desp = despacho vinculado o null). */
+  function armarDevolucion(p, s) {
     var m = baseMov(p, s); m.tipo = 'DEVOLUCION'; m.signo = 1; m.metraje = vMetraje(p.metraje);
     m.bodega_destino = vBodega(p.bodega, 'Bodega destino');
     m.estado_resultante = ['MAL_ESTADO', 'RESERVADA'].indexOf(p.estado_material) >= 0 ? p.estado_material : 'DISPONIBLE';
@@ -341,11 +381,20 @@ FS.Service = function (store, user) {
       m.id_vinculado = desp.id_movimiento; m.documento_ref = desp.documento; m.proyecto_ruta = m.proyecto_ruta || desp.proyecto_ruta;
       m.departamento = m.departamento || desp.departamento; m.contratista = m.contratista || desp.contratista;
     }
+    return { m: m, desp: desp };
+  }
+  function alertaSinReferencia(m) {
+    var a = FS.mkAlert('DEVOLUCION_SIN_REFERENCIA', { id_serie: m.id_serie, id_movimiento: m.id_movimiento, campo: 'DOCUMENTO', encontrado: m.metraje + ' m', esperado: 'Despacho relacionado', creada_en: now });
+    a.id_alerta = store.nextId('ALE'); store.append('ALERTAS', [a]);
+  }
+
+  /** Devolución relacionada con el despacho original (o sin referencia → Revisión). */
+  self.registerReturn = function (p) {
+    need('registrar');
+    var s = getSerie(p.serie); if (!s) fail('La serie no existe.');
+    var b = armarDevolucion(p, s), m = b.m, desp = b.desp;
+    if (!desp) alertaSinReferencia(m); // antes de guardar: así basta un solo recálculo
     var res = save([m], 'REGISTRAR_DEVOLUCION');
-    if (!desp) {
-      var a = FS.mkAlert('DEVOLUCION_SIN_REFERENCIA', { id_serie: s.id_serie, id_movimiento: m.id_movimiento, campo: 'DOCUMENTO', encontrado: m.metraje + ' m', esperado: 'Despacho relacionado', creada_en: now });
-      a.id_alerta = store.nextId('ALE'); store.append('ALERTAS', [a]); self.recalc();
-    }
     res.resumen = desp ? { despacho: desp.documento, despachado: +desp.metraje, devuelto: m.metraje, consumo_preliminar: +desp.metraje - m.metraje, completa: +desp.metraje === m.metraje } : { devolucion_sin_referencia: true };
     res.documento = m.documento;
     return res;

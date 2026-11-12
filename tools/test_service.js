@@ -117,6 +117,46 @@ ok('devolución con código editado del catálogo', () => { const otro = store.a
   const r = bod.registerReturn({ serie: sd.id_serie, metraje: 5, bodega: sd.bodega_actual, codigo: otro.codigo.toLowerCase(), fecha: '2026-10-13' });
   const mv = store.all('MOVIMIENTOS').find(x => x.id_movimiento === r.movimientos[0]); if (mv.codigo !== otro.codigo) throw new Error(mv.codigo); return mv.codigo; });
 ok('rutas sugeridas en bootstrap', () => { const r = bod.bootstrap().catalogos.rutas; if (r.indexOf('RUTA SOBRANTE X') < 0) throw new Error('falta'); return r.length; });
+// ---- Alerta de despacho marcado como préstamo (hoy = 2026-10-13, aviso 3 días)
+const sp2 = store.all('SERIES').filter(s => s.estado_actual === 'DISPONIBLE' && +s.saldo_actual > 400 && ![...lote, libre, sd].some(x => x.id_serie === s.id_serie)).slice(0, 2);
+const alertasDe = (tipo, mov) => store.all('ALERTAS').filter(a => a.tipo === tipo && a.id_movimiento === mov);
+const pv = bod.registerDispatchBatch({ ...comun, fecha: '2026-10-01', prestamo: true, responsable: 'JUAN PEREZ', prestado_a: 'Luis Torres', fecha_limite: '2026-10-05', items: [{ serie: sp2[0].id_serie, metraje: 100 }] });
+ok('préstamo vencido → alerta DESPACHO_PRESTAMO_VENCIDO', () => { const a = alertasDe('DESPACHO_PRESTAMO_VENCIDO', pv.movimientos[0]); if (a.length !== 1 || a[0].estado !== 'ABIERTA' || a[0].categoria !== 'PRESTAMO') throw new Error(JSON.stringify(a)); return a[0].descripcion; });
+const pp = bod.registerDispatchBatch({ ...comun, prestamo: true, responsable: 'JUAN PEREZ', prestado_a: 'Ana Ruiz', fecha_limite: '2026-10-15', items: [{ serie: sp2[1].id_serie, metraje: 100 }] });
+ok('préstamo por vencer (2 días) → alerta DESPACHO_PRESTAMO_POR_VENCER', () => { const a = alertasDe('DESPACHO_PRESTAMO_POR_VENCER', pp.movimientos[0]); if (a.length !== 1) throw new Error(JSON.stringify(a)); return a[0].valor_esperado; });
+ok('despacho en préstamo con límite lejano → sin alerta', () => { const mv = store.all('MOVIMIENTOS').find(m => m.prestado_a === 'Luis Torres' && m.fecha_limite_devolucion === '2026-10-28');
+  const n = store.all('ALERTAS').filter(a => /^DESPACHO_PRESTAMO/.test(a.tipo) && a.id_movimiento === mv.id_movimiento).length; if (n) throw new Error(n + ' alertas'); return 0; });
+ok('devolución parcial → la alerta sigue abierta', () => { bod.registerReturn({ serie: sp2[0].id_serie, id_despacho: pv.movimientos[0], metraje: 40, bodega: sp2[0].bodega_actual, fecha: '2026-10-13' });
+  const a = alertasDe('DESPACHO_PRESTAMO_VENCIDO', pv.movimientos[0]); if (a[0].estado !== 'ABIERTA' || !/60 m pendientes/.test(a[0].descripcion) && !/100 m pendientes/.test(a[0].descripcion)) throw new Error(JSON.stringify(a)); return a[0].estado; });
+ok('devolución completa → alerta resuelta automáticamente', () => { bod.registerReturn({ serie: sp2[0].id_serie, id_despacho: pv.movimientos[0], metraje: 60, bodega: sp2[0].bodega_actual, fecha: '2026-10-13' });
+  const a = alertasDe('DESPACHO_PRESTAMO_VENCIDO', pv.movimientos[0]); if (a[0].estado !== 'RESUELTA_AUTO') throw new Error(a[0].estado); return a[0].estado; });
+// ---- Devolución e inventario de apertura por lotes
+const sr = store.all('SERIES').filter(s => s.estado_actual === 'DISPONIBLE' && +s.saldo_actual > 500 && ![...lote, libre, sd, ...sp2].some(x => x.id_serie === s.id_serie)).slice(0, 2);
+const dr = bod.registerDispatchBatch({ ...comun, documento: 'DOC-DR', items: sr.map(s => ({ serie: s.id_serie, metraje: 200 })) });
+ok('seriesInfo informa lo pendiente de devolver', () => { const r = bod.seriesInfo({ series: [sr[0].id_serie] })[0]; if (r.pendiente_devolucion !== 200 || r.despacho_pendiente !== 'DOC-DR') throw new Error(JSON.stringify(r)); return [r.pendiente_devolucion, r.despacho_pendiente]; });
+const rb = ok('devolución por lotes: 2 válidas + inexistente + metraje 0', () => {
+  const r = bod.registerReturnBatch({ fecha: '2026-10-13', estado_material: 'DISPONIBLE', proyecto: 'RUTA SOBRANTE L', certificado_por: 'ING. MORA', items: [
+    { serie: sr[0].id_serie, metraje: 150, bodega: sr[0].bodega_actual }, { serie: sr[1].id_serie, metraje: 200, bodega: sr[1].bodega_actual },
+    { serie: 'NOEXISTE-77', metraje: 10 }, { serie: S.id_serie, metraje: 0, bodega: S.bodega_actual } ] });
+  if (r.registradas.length !== 2 || r.errores.length !== 2 || !/^DV-\d{6}$/.test(r.documento) || r.registradas.some(x => x.despacho !== 'DOC-DR')) throw new Error(JSON.stringify(r));
+  return { doc: r.documento, ok: r.registradas.map(x => x.serie + '→' + x.despacho), err: r.errores.map(e => e.fila + ':' + e.error.slice(0, 25)) };
+});
+ok('devolución por lotes: datos comunes guardados', () => { const mv = store.all('MOVIMIENTOS').filter(m => m.documento === rb.doc);
+  if (mv.length !== 2 || mv.some(m => m.tipo !== 'DEVOLUCION' || m.proyecto_ruta !== 'RUTA SOBRANTE L' || m.certificado_por !== 'ING. MORA')) throw new Error(JSON.stringify(mv.map(m => [m.tipo, m.proyecto_ruta, m.certificado_por])));
+  return mv.length + ' devoluciones'; });
+ok('devolución por lotes sin despacho pendiente → sin referencia + alerta', () => { const r = bod.registerReturnBatch({ fecha: '2026-10-13', items: [{ serie: sr[1].id_serie, metraje: 5, bodega: sr[1].bodega_actual }] });
+  const a = store.all('ALERTAS').filter(x => x.tipo === 'DEVOLUCION_SIN_REFERENCIA' && x.id_movimiento === r.movimientos[0]); if (r.registradas[0].despacho || a.length !== 1) throw new Error(JSON.stringify(r)); return 'alerta ' + a[0].id_alerta; });
+const art = store.all('ARTICULOS')[0], bodA = FS.BODEGAS[0];
+const ab = ok('apertura por lotes: 2 nuevas + existente + sin código + código inexistente', () => {
+  const r = bod.registerOpeningBatch({ fecha: '2026-10-13', estado: 'DISPONIBLE', certificado_por: 'ING. MORA', items: [
+    { serie: 'NUEVA-L1', codigo: art.codigo, metraje: 1000, bodega: bodA }, { serie: 'nueva-l2', codigo: art.codigo.toLowerCase(), metraje: 2000, bodega: bodA },
+    { serie: S.id_serie, codigo: art.codigo, metraje: 10, bodega: bodA }, { serie: 'NUEVA-L3', metraje: 10, bodega: bodA }, { serie: 'NUEVA-L4', codigo: 'NO-EXISTE', metraje: 10, bodega: bodA } ] });
+  if (r.registradas.length !== 2 || r.errores.length !== 3 || !/^IN-\d{6}$/.test(r.documento)) throw new Error(JSON.stringify(r));
+  return { doc: r.documento, err: r.errores.map(e => e.fila + ':' + e.error.slice(0, 28)) };
+});
+ok('apertura por lotes: series creadas con saldo y código', () => { const a = store.all('SERIES').find(s => s.id_serie === 'NUEVA-L2');
+  if (!a || +a.saldo_actual !== 2000 || a.codigo !== art.codigo || a.bodega_actual !== bodA) throw new Error(JSON.stringify(a)); return [a.id_serie, a.saldo_actual, a.estado_actual]; });
+err('apertura por lotes: rol consulta', () => con.registerOpeningBatch({ fecha: '2026-10-13', items: [{ serie: 'X1', codigo: art.codigo, metraje: 1, bodega: bodA }] }), /Permiso/);
 ok('lote: todas fallan → no registra nada', () => { const n = store.all('MOVIMIENTOS').length, r = bod.registerDispatchBatch({ ...comun, items: [{ serie: 'NOEXISTE-1', metraje: 5 }] });
   if (r.ok || r.registradas.length || store.all('MOVIMIENTOS').length !== n) throw new Error('registró'); return r.errores[0].error; });
 console.log(`\n${pass} correctas, ${failn} fallidas`);

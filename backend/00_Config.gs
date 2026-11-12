@@ -117,6 +117,8 @@ FS.ALERTAS = {
   PRESTAMO_SIN_FECHA_LIMITE: ['PRESTAMO', 'MEDIA', 'Préstamo sin fecha límite de devolución'],
   PRESTAMO_VENCIDO:          ['PRESTAMO', 'ALTA', 'Préstamo vencido'],
   PRESTAMO_POR_VENCER:       ['PRESTAMO', 'BAJA', 'Préstamo próximo a vencer'],
+  DESPACHO_PRESTAMO_VENCIDO: ['PRESTAMO', 'ALTA', 'Despacho en préstamo vencido sin devolución completa'],
+  DESPACHO_PRESTAMO_POR_VENCER: ['PRESTAMO', 'BAJA', 'Despacho en préstamo próximo a vencer'],
   PRESTAMO_DIFERENCIA:       ['PRESTAMO', 'MEDIA', 'Diferencia entre metraje prestado y devuelto'],
   PRESTADA_REAPARECE_DISPONIBLE: ['PRESTAMO', 'ALTA', 'Serie prestada aparece disponible sin devolución documentada'],
   OBS_DEVOLUCION_SIN_METRAJE:['REVISION', 'MEDIA', 'Observación de devolución sin metraje'],

@@ -44,6 +44,7 @@ function setupEstructura() {
   if (!store.all('CATALOGOS').length) store.append('CATALOGOS', FS.CATALOGO_SEMILLA.map(function (r) { return { catalogo: r[0], valor_original: r[1], valor_normalizado: r[2], clase: r[3], activo: 'SI', nota: 'semilla' }; }));
   var hoja1 = ss.getSheetByName('Hoja 1') || ss.getSheetByName('Sheet1');
   if (hoja1 && hoja1.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(hoja1);
+  FS_bumpDataVersion_();
   FS_toast_('Estructura creada. Pegue la matriz en MATRIZ_ORIGINAL y ejecute "Importar matriz histórica".');
 }
 
@@ -98,6 +99,7 @@ function configurarOrigenMatriz() {
   var url = r.getResponseText().trim();
   if (url) FS_parseSheetUrl_(url);
   if (!store.update('PARAMETROS', 'clave', 'MATRIZ_URL', { valor: url })) store.append('PARAMETROS', [{ clave: FS_PARAM_MATRIZ_URL_[0], valor: url, descripcion: FS_PARAM_MATRIZ_URL_[2] }]);
+  FS_bumpDataVersion_();
   ui.alert(url ? 'Listo. "Importar matriz histórica" leerá la matriz desde el enlace configurado.' : 'Listo. "Importar matriz histórica" usará la hoja MATRIZ_ORIGINAL.');
 }
 
@@ -117,7 +119,7 @@ function importarMatriz() {
     if (existentes && ui.alert('Reimportar', 'Ya existen ' + existentes + ' movimientos importados. ¿Reemplazarlos? (los ' + (movs.length - existentes) + ' movimientos registrados desde la app se conservan)', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
   }
   var lock = LockService.getScriptLock(); lock.waitLock(60000);
-  try { FS_importarValores_(ss, vals, url, 'IMPORTAR_MATRIZ'); } finally { lock.releaseLock(); }
+  try { FS_importarValores_(ss, vals, url, 'IMPORTAR_MATRIZ'); } finally { FS_bumpDataVersion_(); lock.releaseLock(); }
 }
 
 /**
@@ -131,7 +133,7 @@ function importarMatrizAuto() {
   if (FS_huellaMatriz_(vals) === props.getProperty('MATRIZ_HUELLA')) return; // sin cambios
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(120000)) return; // el sistema está ocupado; se reintenta en la próxima hora
-  try { FS_importarValores_(FS_getSpreadsheet_(), vals, url, 'IMPORTAR_MATRIZ_AUTO', true); } finally { lock.releaseLock(); }
+  try { FS_importarValores_(FS_getSpreadsheet_(), vals, url, 'IMPORTAR_MATRIZ_AUTO', true); } finally { FS_bumpDataVersion_(); lock.releaseLock(); }
 }
 
 /** La fila 1 debe tener al menos SERIE y MTS INGRESO o MTS SALIDA; si no, el enlace no apunta a la pestaña de la matriz. */
@@ -182,6 +184,7 @@ function FS_importarValores_(ss, vals, url, accion, auto) {
 
 function recalcularTodo() {
   var res = new FS.Service(new FS.SheetStore(), FS_ADMIN_USER_).recalc();
+  FS_bumpDataVersion_();
   FS_toast_('Recalculado: ' + res.series + ' series, ' + res.alertas_nuevas + ' alertas nuevas, ' + res.alertas_auto_resueltas + ' resueltas automáticamente.');
   return res;
 }
@@ -210,12 +213,12 @@ function enviarResumenAlertas() {
   var nuevas = abiertas.filter(function (a) { return String(a.creada_en).slice(0, 10) >= ayer; });
   var series = store.all('SERIES');
   var cnt = function (f) { return abiertas.filter(f).length; };
-  var filas = abiertas.filter(function (a) { return a.severidad === 'CRITICA' || a.tipo === 'PRESTAMO_VENCIDO' || a.tipo === 'PRESTAMO_POR_VENCER'; }).slice(0, 40)
+  var filas = abiertas.filter(function (a) { return a.severidad === 'CRITICA' || /PRESTAMO_(VENCIDO|POR_VENCER)$/.test(a.tipo); }).slice(0, 40)
     .map(function (a) { return '<tr><td>' + a.severidad + '</td><td>' + a.tipo + '</td><td>' + a.id_serie + '</td><td>' + a.valor_encontrado + '</td><td>' + a.valor_esperado + '</td></tr>'; }).join('');
   var html = '<div style="font-family:Arial,sans-serif;font-size:13px">' +
     '<h2 style="color:#1f3b57">Fibra Stock — resumen ' + store.today() + '</h2>' +
     '<p><b>' + cnt(function (a) { return a.categoria === 'CRITICA'; }) + '</b> alertas críticas abiertas · <b>' + series.filter(function (s) { return +s.saldo_actual < 0; }).length + '</b> series con saldo negativo · <b>' +
-    cnt(function (a) { return a.tipo === 'PRESTAMO_VENCIDO'; }) + '</b> préstamos vencidos · <b>' + cnt(function (a) { return a.tipo === 'PRESTAMO_POR_VENCER'; }) + '</b> por vencer · <b>' + nuevas.length + '</b> alertas nuevas desde ayer.</p>' +
+    cnt(function (a) { return /PRESTAMO_VENCIDO$/.test(a.tipo); }) + '</b> préstamos vencidos · <b>' + cnt(function (a) { return /PRESTAMO_POR_VENCER$/.test(a.tipo); }) + '</b> por vencer · <b>' + nuevas.length + '</b> alertas nuevas desde ayer.</p>' +
     (filas ? '<table border="1" cellpadding="4" style="border-collapse:collapse"><tr style="background:#e8eef5"><th>Severidad</th><th>Tipo</th><th>Serie</th><th>Encontrado</th><th>Esperado</th></tr>' + filas + '</table>' : '') +
     (p.URL_APP ? '<p><a href="' + p.URL_APP + '#alertas">Abrir alertas en la aplicación</a></p>' : '') + '</div>';
   MailApp.sendEmail({ to: dest, subject: 'Fibra Stock: ' + cnt(function (a) { return a.categoria === 'CRITICA'; }) + ' críticas, ' + nuevas.length + ' nuevas', htmlBody: html });
@@ -239,6 +242,7 @@ function auditarEdicion(e) {
   if (!e || !e.range) return;
   var sh = e.range.getSheet(), name = sh.getName();
   if (!FS.SCHEMA.hasOwnProperty(name)) return;
+  FS_bumpDataVersion_(); // edición manual en una hoja de la app: la caché deja de usarse
   var store = new FS.SheetStore(), user = (e.user && e.user.getEmail && e.user.getEmail()) || Session.getActiveUser().getEmail() || 'desconocido';
   var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0], campo = head[e.range.getColumn() - 1] || '';
   var revertido = false;

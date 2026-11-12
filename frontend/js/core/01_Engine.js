@@ -642,6 +642,18 @@ FS.dynamicAlerts = function (data, today, params) {
     if (abierto && lm && lm.fecha > p.fecha_prestamo && lm.estado_resultante === 'DISPONIBLE' && lm.tipo !== 'DEVOLUCION_DE_PRESTAMO')
       add('PRESTADA_REAPARECE_DISPONIBLE', mixin(b, { campo: 'ESTADO', encontrado: 'DISPONIBLE el ' + lm.fecha, esperado: 'Devolución de préstamo documentada' }));
   });
+  // Despachos marcados como préstamo: alerta al vencer la fecha límite mientras no se devuelva todo lo despachado.
+  var vigentes = (data.movimientos || []).filter(FS.isMovVigente), devueltoDe = {};
+  vigentes.forEach(function (m) { if (m.tipo === 'DEVOLUCION' && m.id_vinculado) devueltoDe[m.id_vinculado] = (devueltoDe[m.id_vinculado] || 0) + U.num(m.metraje); });
+  vigentes.forEach(function (m) {
+    var lim = m.fecha_limite_devolucion;
+    if (m.tipo !== 'DESPACHO' || m.prestamo !== 'SI' || !lim) return;
+    var pend = U.num(m.metraje) - (devueltoDe[m.id_movimiento] || 0); if (pend <= 0) return;
+    var b = { id_serie: m.id_serie, id_movimiento: m.id_movimiento, campo: 'FECHA LIMITE', responsable: m.responsable || '' };
+    var det = pend + ' m pendientes de ' + U.num(m.metraje) + ' m — prestado a ' + (m.prestado_a || '—') + ', responsable ' + (m.responsable || '—') + ', doc. ' + (m.documento || '—');
+    if (lim < today) add('DESPACHO_PRESTAMO_VENCIDO', mixin(b, { encontrado: 'Venció ' + lim, esperado: 'Devolución antes de ' + lim, detalle: U.diffDays(today, lim) + ' días de retraso — ' + det }));
+    else if (U.diffDays(lim, today) <= aviso) add('DESPACHO_PRESTAMO_POR_VENCER', mixin(b, { encontrado: 'Vence ' + lim, esperado: 'Vence en ' + U.diffDays(lim, today) + ' días', detalle: det }));
+  });
   return out;
   function mixin(a, c) { var o = {}, k; for (k in a) o[k] = a[k]; for (k in c) o[k] = c[k]; return o; }
 };
@@ -916,7 +928,7 @@ FS.report = function (data, tipo, f, today, params) {
       ['Devoluciones superiores al despacho', ['DEVOLUCION_MAYOR_DESPACHO']], ['Documentos de despacho duplicados', ['DOC_DESPACHO_DUPLICADO']],
       ['Series posiblemente duplicadas', ['DUPLICADO_ACCIDENTAL', 'POSIBLE_DUPLICADO']], ['Estados contradictorios', ['ESTADO_DESPACHADA_SIN_SALIDA', 'ESTADO_NO_COINCIDE', 'DISPONIBLE_Y_BAJA', 'REAPARICION_CON_SALDO', 'SERIE_EN_DOS_BODEGAS']],
       ['Fechas inválidas', ['FECHA_INVALIDA', 'FECHA_FUTURA', 'CERTIFICACION_FUTURA']], ['Metrajes ambiguos', ['METRAJE_AMBIGUO', 'METRAJE_TEXTO']],
-      ['Préstamos vencidos / sin fecha', ['PRESTAMO_VENCIDO', 'PRESTAMO_SIN_FECHA_LIMITE', 'PRESTADA_SIN_RESPONSABLE']], ['Sobrantes sin cuantificar', ['SOBRANTE_SIN_CANTIDAD']],
+      ['Préstamos vencidos / sin fecha', ['PRESTAMO_VENCIDO', 'DESPACHO_PRESTAMO_VENCIDO', 'PRESTAMO_SIN_FECHA_LIMITE', 'PRESTADA_SIN_RESPONSABLE']], ['Sobrantes sin cuantificar', ['SOBRANTE_SIN_CANTIDAD']],
       ['Rollos con saldo bajo', ['SALDO_BAJO']]];
     return { secciones: grupos.map(function (g) {
       return { titulo: g[0], filas: open.filter(function (a) { return g[1].indexOf(a.tipo) >= 0; }).map(function (a) { return { serie: a.id_serie, tipo: a.tipo, severidad: a.severidad, fila: a.fila_origen, campo: a.campo, encontrado: a.valor_encontrado, esperado: a.valor_esperado, estado: a.estado }; }) };

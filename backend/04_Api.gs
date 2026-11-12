@@ -10,7 +10,7 @@ var FS_READ_ACTIONS = {
   pendingApprovals: 'pendingApprovals', catalogs: 'catalogs', dispatchesOf: 'dispatchesOf', seriesInfo: 'seriesInfo'
 };
 var FS_WRITE_ACTIONS = {
-  registerMovement: 'registerMovement', registerDispatchBatch: 'registerDispatchBatch', registerReturn: 'registerReturn', registerLoan: 'registerLoan', returnLoan: 'returnLoan',
+  registerMovement: 'registerMovement', registerDispatchBatch: 'registerDispatchBatch', registerReturnBatch: 'registerReturnBatch', registerOpeningBatch: 'registerOpeningBatch', registerReturn: 'registerReturn', registerLoan: 'registerLoan', returnLoan: 'returnLoan',
   setLoanState: 'setLoanState', registerSurplus: 'registerSurplus', confirmSurplus: 'confirmSurplus', transfer: 'transfer', cut: 'cut',
   approve: 'approve', annulMovement: 'annulMovement', updateAlert: 'updateAlert', linkFamily: 'linkFamily', saveCatalog: 'saveCatalog',
   saveParam: 'saveParam', saveSupplyParam: 'saveSupplyParam', saveArticle: 'saveArticle', recalc: 'recalc'
@@ -47,7 +47,7 @@ function doPost(e) {
         var out = svc2[FS_WRITE_ACTIONS[a]](p);
         SpreadsheetApp.flush();
         return FS_json_({ ok: true, data: out });
-      } finally { lock.releaseLock(); }
+      } finally { FS_bumpDataVersion_(); lock.releaseLock(); } // invalida lo que una consulta haya leído a mitad de la escritura
     }
     throw new Error('Acción desconocida: ' + a);
   } catch (err) {
