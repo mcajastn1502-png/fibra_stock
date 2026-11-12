@@ -47,7 +47,8 @@ FS.SCHEMA = {
   PARAMETROS: ['clave', 'valor', 'descripcion'],
   ABASTECIMIENTO_PARAM: ['familia', 'descripcion', 'stock_minimo', 'lead_time_dias', 'dias_seguridad',
     'factor_temporada', 'prioridad'],
-  USUARIOS: ['email', 'nombre', 'rol', 'activo', 'salt', 'hash', 'creado_en', 'ultimo_acceso'],
+  USUARIOS: ['email', 'nombre', 'rol', 'activo', 'salt', 'hash', 'creado_en', 'ultimo_acceso',
+    'usuario', 'temp_salt', 'temp_hash', 'temp_expira', 'debe_cambiar'],
   BITACORA: ['id', 'fecha_hora', 'usuario', 'accion', 'tabla', 'id_registro', 'campo', 'valor_anterior', 'valor_nuevo',
     'detalle']
 };

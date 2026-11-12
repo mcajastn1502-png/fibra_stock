@@ -107,15 +107,18 @@
     var u = BOOT.user; critAt = 0; // menú nuevo: su contador de alertas se consulta de inmediato
     $app.innerHTML = '<div class="shell"><nav class="side" id="side"><div class="brand">' + LOGO + '<span>' + esc(cfg.APP_NAME || 'Fibra Stock') + '</span></div>' +
       NAV.map(function (n) { if (n.length === 1) return '<div class="grp">' + n[0] + '</div>'; if (!can(n[2]) || n[4] === 'oculto') return ''; return '<a href="#' + n[0] + '" data-r="' + n[0] + '"><span style="width:16px;text-align:center">' + n[3] + '</span>' + n[1] + (n[0] === 'alertas' ? '<span class="cnt" id="nav-crit" hidden></span>' : '') + '</a>'; }).join('') +
-      '<div class="me"><b>' + esc(u.nombre || u.email) + '</b>' + esc(u.email) + '<br>Rol: ' + esc(u.rol) + '<div class="row" style="margin-top:8px">' + (Api.demo ? '' : '<button class="btn sm" id="btn-pass">Cambiar clave</button>') + '<button class="btn sm" id="btn-out">Salir</button></div></div></nav>' +
+      '<div class="me"><b>' + esc(u.usuario || u.nombre || u.email) + '</b>' + esc(u.email) + '<br>Rol: ' + esc(u.rol) + '<div class="row" style="margin-top:8px">' + (Api.demo ? '' : '<button class="btn sm" id="btn-pass">Cambiar clave</button>') + '<button class="btn sm" id="btn-out">Salir</button></div></div></nav>' +
       '<div class="main"><div class="top"><button class="btn sm menu-btn" id="btn-menu" aria-label="Menú">☰</button><h2 id="ttl"></h2><span class="sp"></span>' + (Api.demo ? '<span class="badge-demo">MODO DEMO · datos solo en este navegador</span>' : '') + '<span class="busy-ind" role="status"><span class="spin"></span>Consultando…</span><span class="hint">Hoy ' + esc(BOOT.hoy) + '</span></div><div class="content" id="view"></div></div></div>';
     document.getElementById('btn-out').onclick = function () { Api.logout(); BOOT = null; location.hash = '#login'; route_(); };
     document.getElementById('btn-menu').onclick = function () { document.getElementById('side').classList.toggle('open'); };
-    var bp = document.getElementById('btn-pass'); if (bp) bp.onclick = changePassword;
+    var bp = document.getElementById('btn-pass'); if (bp) bp.onclick = function () { changePassword(false); };
+    if (u.debe_cambiar && !Api.demo) setTimeout(function () { changePassword(true); }, 300); // ingresó con contraseña temporal
   }
-  function changePassword() {
-    modal('<h3>Cambiar contraseña</h3><div class="form-grid">' + field('actual', 'Contraseña actual', 'password', { req: 1 }) + field('nueva', 'Nueva contraseña (mín. 8)', 'password', { req: 1 }) + '</div><div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) {
-      md.querySelector('#ok').onclick = function () { var d = formData(md); api('changePassword', d).then(function () { toast('Contraseña actualizada.', 'ok'); close(); }).catch(function (e) { toast(e.message, 'err'); }); };
+  /** forzado = ingresó con la contraseña temporal enviada por correo: debe definir una nueva. */
+  function changePassword(forzado) {
+    modal('<h3>Cambiar contraseña</h3>' + (forzado === true ? '<div class="note">Ingresó con una contraseña temporal. Defina ahora su nueva contraseña.</div>' : '') +
+      '<div class="form-grid">' + field('actual', forzado === true ? 'Contraseña temporal' : 'Contraseña actual', 'password', { req: 1 }) + field('nueva', 'Nueva contraseña (mín. 8)', 'password', { req: 1 }) + '</div><div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) {
+      md.querySelector('#ok').onclick = function () { var d = formData(md); api('changePassword', d).then(function () { if (BOOT && BOOT.user) BOOT.user.debe_cambiar = false; toast('Contraseña actualizada.', 'ok'); close(); }).catch(function (x) { toast(x.message, 'err'); }); };
     });
   }
 
@@ -147,12 +150,19 @@
   function renderLogin(err) {
     $app.innerHTML = '<div class="login"><div class="login-card"><div class="brand">' + LOGO + '<span>' + esc(cfg.APP_NAME || 'Fibra Stock') + '</span></div>' +
       '<h1>Inventario de fibra óptica</h1><p class="sub">' + esc(cfg.EMPRESA || '') + '</p>' + (err ? '<div class="note err">' + esc(err) + '</div>' : '') +
-      (Api.demo ? demoLogin() : '<form id="lf"><div class="grid" style="gap:12px">' + field('email', 'Correo', 'email', { req: 1 }) + '<div class="f"><label>Contraseña</label><div class="row"><input id="pw" name="password" type="password" placeholder="Contraseña" style="flex:1"><button type="button" class="btn sm" onclick="var pw=document.getElementById(\'pw\'); pw.type=pw.type===\'password\'?\'text\':\'password\'; this.textContent=pw.type===\'text\'?\'Ocultar\':\'Mostrar\';">Mostrar</button></div></div>' + '</div><div class="actions"><a href="#" onclick="var d=formData(document.getElementById(\'lf\')); if(!d.email){toast(\'Ingrese su correo\',\'err\');return false;} api(\'resetPassword\',{email:d.email}).then(function(r){toast(r.mensaje,\'ok\');}).catch(function(x){toast(x.message,\'err\');}); return false;" class="link">Recuperar contraseña</a><button class="btn pri" type="submit">Ingresar</button></div></form>') +
+      (Api.demo ? demoLogin() : '<form id="lf"><div class="grid" style="gap:12px">' + field('usuario', 'Usuario', 'text', { req: 1, ph: 'Su usuario' }) + '<div class="f"><label>Contraseña</label><div class="row"><input id="pw" name="password" type="password" placeholder="Contraseña" style="flex:1"><button type="button" class="btn sm" onclick="var pw=document.getElementById(\'pw\'); pw.type=pw.type===\'password\'?\'text\':\'password\'; this.textContent=pw.type===\'text\'?\'Ocultar\':\'Mostrar\';">Mostrar</button></div></div>' + '</div><div class="actions"><a href="#" id="lnk-rec" class="link">Recuperar contraseña</a><button class="btn pri" type="submit">Ingresar</button></div></form>') +
       '</div></div>';
     if (Api.demo) bindDemo();
     else document.getElementById('lf').onsubmit = function (e) {
       e.preventDefault(); var d = formData(e.target), b = e.target.querySelector('button'); busy(b, true);
-      track(Api.login(d.email, d.password)).then(function () { BOOT = null; location.hash = '#dashboard'; route_(); }).catch(function (x) { busy(b, false); renderLogin(x.message); });
+      track(Api.login(d.usuario, d.password)).then(function () { BOOT = null; location.hash = '#dashboard'; route_(); }).catch(function (x) { busy(b, false); renderLogin(x.message); });
+    };
+    var rec = document.getElementById('lnk-rec');
+    if (rec) rec.onclick = function (e) {
+      e.preventDefault();
+      var us = document.querySelector('#lf [name=usuario]'), id = us.value.trim();
+      if (!id) { toast('Escriba su usuario y vuelva a pulsar "Recuperar contraseña".', 'err'); us.focus(); return; }
+      track(Api.resetPassword(id)).then(function (r) { toast(r.mensaje, 'ok'); }).catch(function (x) { toast(x.message, 'err'); });
     };
   }
   function demoLogin() {
@@ -934,11 +944,11 @@
   SCREENS.usuarios = async function (v) {
     var u = await api('listUsers');
     v.innerHTML = '<div class="card"><div class="grid g2"><div><h3>Roles</h3><dl class="kv"><dt>ADMIN</dt><dd>Configura catálogos, corrige (anula) registros, cierra alertas y administra usuarios.</dd><dt>SUPERVISOR</dt><dd>Aprueba ajustes y bajas, valida saldos negativos, cierra alertas críticas.</dd><dt>BODEGA</dt><dd>Registra ingresos, despachos, devoluciones, préstamos, sobrantes y traslados.</dd><dt>ANALISTA</dt><dd>Revisa alertas, concilia, relaciona series y genera reportes.</dd><dt>CONSULTA</dt><dd>Consulta inventario, historial y reportes sin modificar.</dd></dl></div>' +
-      '<div><h3>Crear o editar usuario</h3><form id="uf"><div class="form-grid">' + field('email', 'Correo', 'email', { req: 1 }) + field('nombre', 'Nombre', 'text') + field('rol', 'Rol', 'select', { options: Object.keys({ ADMIN: 1, SUPERVISOR: 1, BODEGA: 1, ANALISTA: 1, CONSULTA: 1 }), req: 1 }) + field('password', 'Contraseña (vacía = no cambia)', 'password') + '<div class="f"><label>Activo</label><input type="checkbox" name="activo" checked style="width:auto"></div></div><div class="actions"><button class="btn pri" type="submit">Guardar</button></div></form></div></div></div>' +
+      '<div><h3>Crear o editar usuario</h3><form id="uf"><div class="form-grid">' + field('email', 'Correo', 'email', { req: 1, hint: 'Se usa para recuperar la contraseña.' }) + field('usuario', 'Usuario', 'text', { req: 1, hint: 'Para ingresar. Minúsculas, números, punto o guion; sin espacios.' }) + field('rol', 'Rol', 'select', { options: Object.keys({ ADMIN: 1, SUPERVISOR: 1, BODEGA: 1, ANALISTA: 1, CONSULTA: 1 }), req: 1 }) + field('password', 'Contraseña (vacía = no cambia)', 'password') + '<div class="f"><label>Activo</label><input type="checkbox" name="activo" checked style="width:auto"></div></div><div class="actions"><button class="btn pri" type="submit">Guardar</button></div></form></div></div></div>' +
       '<div class="card"><div id="ut"></div></div>';
     var f = v.querySelector('#uf');
     f.onsubmit = function (e) { e.preventDefault(); var d = formData(f); api('saveUser', d).then(function () { toast('Usuario guardado.', 'ok'); route_(); }).catch(function (x) { toast(x.message, 'err'); }); };
-    table(document.getElementById('ut'), { rows: u, name: 'usuarios', onRow: function (r) { f.email.value = r.email; f.nombre.value = r.nombre; f.rol.value = r.rol; f.activo.checked = r.activo === 'SI'; f.scrollIntoView(); }, cols: [{ k: 'email', l: 'Correo' }, { k: 'nombre', l: 'Nombre' }, { k: 'rol', l: 'Rol' }, { k: 'activo', l: 'Activo' }, { k: 'ultimo_acceso', l: 'Último acceso' }] });
+    table(document.getElementById('ut'), { rows: u, name: 'usuarios', onRow: function (r) { f.email.value = r.email; f.usuario.value = r.usuario || ''; f.rol.value = r.rol; f.activo.checked = r.activo === 'SI'; f.scrollIntoView(); }, cols: [{ k: 'email', l: 'Correo' }, { k: 'usuario', l: 'Usuario', f: function (x) { return x ? esc(x) : '<span class="hint">(sin asignar: ingresa con el correo)</span>'; } }, { k: 'rol', l: 'Rol' }, { k: 'activo', l: 'Activo' }, { k: 'ultimo_acceso', l: 'Último acceso' }] });
   };
 
   /* ============================ 15. bitácora ============================ */

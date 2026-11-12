@@ -35,7 +35,7 @@ window.Api = (function () {
     if (action === 'saveUser') throw new Error('En modo demo los usuarios se simulan eligiendo el rol al ingresar.');
     if (action === 'changePassword') throw new Error('No disponible en modo demo.');
     if (action === 'exportReport') throw new Error('La exportación a Google Sheets requiere el backend de Apps Script. Use Excel o PDF en la demo.');
-    if (action === 'resetPassword') return svc.resetPassword(p);
+    if (action === 'resetPassword') throw new Error('En modo demo no hay contraseñas: elija el rol al ingresar.');
     if (action === 'logout') return true;
     if (typeof svc[action] !== 'function') throw new Error('Acción desconocida: ' + action);
     return svc[action](p);
@@ -43,7 +43,9 @@ window.Api = (function () {
 
   return {
     demo: demo, call: call, session: session,
-    async login(email, password) { var d = await call('login', { email: email, password: password }); setSession(d); return d; },
+    async login(usuario, password) { var d = await call('login', { usuario: usuario, password: password }); setSession(d); return d; },
+    /** Envía una contraseña temporal al correo registrado del usuario (no requiere sesión). */
+    resetPassword: function (usuario) { return call('resetPassword', { usuario: usuario }); },
     async startDemo(csvText, rol, email) {
       var st = FS.buildFromCSV(csvText);
       try { localStorage.setItem(DEMO_KEY, JSON.stringify(st.dump())); } catch (e) { /* demasiado grande o bloqueado */ }

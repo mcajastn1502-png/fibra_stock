@@ -21,7 +21,7 @@ Range.prototype={
 };
 const sheets={}; const SS={ getId:()=> 'SSID', setSpreadsheetTimeZone(){}, getSpreadsheetTimeZone:()=> 'America/Guayaquil',
   getSheetByName:n=>sheets[n]||null, insertSheet:n=>(sheets[n]=new Sheet(n)), getSheets:()=>Object.values(sheets), deleteSheet(s){delete sheets[s.name]}, toast(m){console.log('[toast]',m)} };
-const props={}, cache={}, lecturas={};
+const props={}, cache={}, lecturas={}, correos=[];
 const g={ console, Object, JSON, Math, Date, String, Number, Array, RegExp, Error,
   SpreadsheetApp:{ getActiveSpreadsheet:()=>SS, openById:()=>SS, flush(){}, getUi(){ throw new Error('sin UI'); }, create:(t)=>{ const o={sh:[],getSheets(){return [this.ins()]},ins(){const s=new Sheet('x');s.setName=function(n){this.name=n};this.sh.push(s);return s},insertSheet(){return this.ins()},getUrl:()=> 'https://docs.google.com/spreadsheets/d/FAKE',addViewer(){}}; return o; } },
   PropertiesService:{ getScriptProperties:()=>({ getProperty:k=>props[k]||null, setProperty:(k,v)=>props[k]=v, deleteProperty:k=>delete props[k] }) },
@@ -32,7 +32,7 @@ const g={ console, Object, JSON, Math, Date, String, Number, Array, RegExp, Erro
     getUuid:()=>crypto.randomUUID(), computeDigest:(a,s)=>[...crypto.createHash('sha256').update(s).digest()].map(b=>b>127?b-256:b), base64Encode:b=>Buffer.from(b.map(x=>x&255)).toString("base64"), DigestAlgorithm:{SHA_256:1}, Charset:{UTF_8:1} },
   ContentService:{ createTextOutput:t=>({ t, setMimeType(){return this} }), MimeType:{JSON:1} },
   HtmlService:{ createHtmlOutput:h=>h }, Session:{ getEffectiveUser:()=>({getEmail:()=> 'owner@telconet.ec'}), getActiveUser:()=>({getEmail:()=> 'owner@telconet.ec'}) },
-  MailApp:{ sendEmail:(o)=>console.log('[mail]', typeof o==='string'?o:o.to+' | '+o.subject) }, Logger:{log:console.log},
+  MailApp:{ sendEmail:(o)=>{ correos.push(o); console.log('[mail]', typeof o==='string'?o:o.to+' | '+o.subject); } }, Logger:{log:console.log},
   ScriptApp:{ getProjectTriggers:()=>[] }
 };
 vm.createContext(g);
@@ -86,8 +86,34 @@ if(require.main===module){
   console.log('no token',call('dashboard',{}).error);
   const b=call('bootstrap',{},tk); console.log('bootstrap',b.ok,b.data.catalogos.departamentos.length,'deps',b.data.catalogos.articulos.length,'arts');
   const d=call('dashboard',{filtros:{}},tk); console.log('kpi',JSON.stringify(d.data.kpi));
-  console.log('user',call('saveUser',{email:'bodega@telconet.ec',nombre:'Bodega',rol:'BODEGA',password:'Bodega1234'},tk));
-  const tb=call('login',{email:'bodega@telconet.ec',password:'Bodega1234'}).data.token;
+  console.log('user',call('saveUser',{email:'bodega@telconet.ec',usuario:'Bodega1',rol:'BODEGA',password:'Bodega1234'},tk));
+  { // ingreso con usuario y recuperación de contraseña por correo
+    const ok=(c,msg)=>console.log((c?'usuario ok: ':'FALLO usuario: ')+msg);
+    ok(call('login',{usuario:'bodega1',password:'Bodega1234'}).ok, 'ingresa con su usuario (sin importar mayúsculas)');
+    ok(!call('login',{usuario:'bodega@telconet.ec',password:'Bodega1234'}).ok, 'con usuario asignado ya no ingresa con el correo');
+    ok(call('login',{email:'admin@telconet.ec',password:'Clave12345'}).ok, 'sin usuario asignado ingresa con el correo (transición)');
+    ok(/ya está asignado/.test(call('saveUser',{email:'otro@telconet.ec',usuario:'bodega1',rol:'CONSULTA',password:'Otro12345'},tk).error||''), 'usuario repetido rechazado');
+    ok(/Usuario inválido/.test(call('saveUser',{email:'otro@telconet.ec',usuario:'con espacio',rol:'CONSULTA',password:'Otro12345'},tk).error||''), 'usuario con espacios rechazado');
+    ok((call('listUsers',{},tk).data.find(u=>u.email==='bodega@telconet.ec')||{}).usuario==='bodega1', 'listUsers devuelve el usuario');
+    const n0=correos.length, r1=call('resetPassword',{usuario:'noexiste'}), r2=call('resetPassword',{usuario:'bodega1'});
+    ok(r1.ok && r2.ok && r1.data.mensaje===r2.data.mensaje, 'misma respuesta exista o no el usuario');
+    ok(correos.length===n0+1 && correos[correos.length-1].to==='bodega@telconet.ec', 'correo enviado solo al usuario existente, a su correo registrado');
+    const temp=/<b style="font-size:16px;letter-spacing:1px">([a-z0-9]{10})</.exec(correos[correos.length-1].htmlBody)[1];
+    ok(!JSON.stringify(r2).includes(temp), 'la respuesta no revela la contraseña temporal');
+    ok(call('login',{usuario:'bodega1',password:'Bodega1234'}).ok, 'la contraseña anterior sigue valiendo');
+    const lt=call('login',{usuario:'bodega1',password:temp}); ok(lt.ok && lt.data.user.debe_cambiar===true, 'ingresa con la temporal y se le pide cambiarla');
+    ok(call('bootstrap',{},lt.data.token).data.user.debe_cambiar===true, 'bootstrap informa el cambio pendiente');
+    ok(call('changePassword',{actual:temp,nueva:'Nueva12345'},lt.data.token).ok, 'cambia la contraseña usando la temporal');
+    ok(call('bootstrap',{},lt.data.token).data.user.debe_cambiar===false, 'tras cambiarla la sesión ya no la pide');
+    ok(!call('login',{usuario:'bodega1',password:temp}).ok && !call('login',{usuario:'bodega1',password:'Bodega1234'}).ok && call('login',{usuario:'bodega1',password:'Nueva12345'}).ok, 'la temporal y la anterior dejan de valer; vale la nueva');
+    call('resetPassword',{usuario:'bodega1'}); const t2=/letter-spacing:1px">([a-z0-9]{10})</.exec(correos[correos.length-1].htmlBody)[1];
+    new g.FS.SheetStore().update('USUARIOS','email','bodega@telconet.ec',{temp_expira:'2020-01-01 00:00:00'});
+    ok(!call('login',{usuario:'bodega1',password:t2}).ok, 'la temporal vencida no sirve');
+    const n1=correos.length; call('resetPassword',{usuario:'bodega1'}); call('resetPassword',{usuario:'bodega1'}); call('resetPassword',{usuario:'bodega1'});
+    ok(correos.length===n1+1, 'máximo 3 pedidos por hora (el 4.º no envía correo)');
+    call('saveUser',{email:'bodega@telconet.ec',usuario:'bodega1',rol:'BODEGA',password:'Bodega1234'},tk);
+  }
+  const tb=call('login',{usuario:'bodega1',password:'Bodega1234'}).data.token;
   const S=call('inventory',{filtros:{estado:'DISPONIBLE',estado_saldo:'COMPLETO'}},tb).data.filas.find(s=>s.saldo_actual>1000);
   const r=call('registerMovement',{tipo:'DESPACHO',serie:S.id_serie,metraje:500,bodega:S.bodega_actual,documento:'DOC-1',departamento:'GIS',proyecto:'RUTA X',fecha:'2026-10-13'},tb);
   console.log('despacho',r.ok, r.ok?r.data.serie.saldo_actual:r.error, 'antes',S.saldo_actual);

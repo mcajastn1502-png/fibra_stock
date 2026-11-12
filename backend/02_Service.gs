@@ -65,7 +65,7 @@ FS.Service = function (store, user) {
       return Object.keys(o).sort();
     };
     return {
-      user: { email: user.email, nombre: user.nombre, rol: user.rol, permisos: FS.ROLES[user.rol] || [] },
+      user: { email: user.email, nombre: user.nombre, usuario: user.usuario || '', rol: user.rol, permisos: FS.ROLES[user.rol] || [], debe_cambiar: !!user.debe_cambiar },
       hoy: today, version: FS.VERSION, params: params,
       catalogos: {
         estados: FS.ESTADOS, bodegas: FS.BODEGAS, ubicaciones: FS.UBICACIONES, tipos_movimiento: Object.keys(FS.TIPOS_MOV),
@@ -576,15 +576,6 @@ FS.Service = function (store, user) {
     var old = store.update('ABASTECIMIENTO_PARAM', 'familia', r.familia, row);
     if (!old) store.append('ABASTECIMIENTO_PARAM', [row]);
     log('PARAM_ABASTECIMIENTO', 'ABASTECIMIENTO_PARAM', r.familia, '', old, row); return { ok: true };
-  };
-  self.resetPassword = function (p) {
-    var users = store.all('USUARIOS');
-    var u = users.filter(function (x) { return U.key(x.email) === U.key(p.email); })[0];
-    if (!u) fail('No existe un usuario con ese correo.');
-    var temp = 'TEMP-' + Math.random().toString(36).slice(2, 8).toUpperCase();
-    store.update('USUARIOS', 'email', u.email, { hash: temp, salt: '' });
-    log('RESET_PASSWORD', 'USUARIOS', u.email, 'hash', u.hash, temp);
-    return { ok: true, mensaje: 'Contraseña temporal generada: ' + temp + '. Se envió al correo registrado.' };
   };
   self.saveArticle = function (p) {
     need('catalogos'); var r = p.fila, cod = U.key(r.codigo); if (!cod) fail('Código obligatorio.');
