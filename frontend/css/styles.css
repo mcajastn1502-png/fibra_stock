@@ -102,7 +102,7 @@ table.lote td { padding: 4px 6px; }
 table.lote input, table.lote select { width: 100%; min-width: 0; }
 table.lote .c-n { width: 32px; color: var(--ink-3); text-align: right; padding-top: 11px; }
 table.lote .c-s { width: 22%; } table.lote .c-c { width: 12%; } table.lote .c-m { width: 12%; } table.lote .c-b { width: 12%; } table.lote .c-x { width: 40px; }
-table.lote .l-cod, table.lote .l-desc { background: var(--line-2); color: var(--ink-2); }
+table.lote .l-cod[readonly], table.lote .l-desc { background: var(--line-2); color: var(--ink-2); }
 table.lote .l-info { font-size: 11.5px; color: var(--ink-3); margin-top: 3px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 table.lote .l-info:empty { display: none; }
 table.lote .l-info.err { color: var(--crit); font-weight: 600; }

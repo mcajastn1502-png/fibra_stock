@@ -156,6 +156,9 @@ const ab = ok('apertura por lotes: 2 nuevas + existente + sin código + código 
 });
 ok('apertura por lotes: series creadas con saldo y código', () => { const a = store.all('SERIES').find(s => s.id_serie === 'NUEVA-L2');
   if (!a || +a.saldo_actual !== 2000 || a.codigo !== art.codigo || a.bodega_actual !== bodA) throw new Error(JSON.stringify(a)); return [a.id_serie, a.saldo_actual, a.estado_actual]; });
+ok('apertura por lotes: guarda departamento, encargado y ruta', () => { const r = bod.registerOpeningBatch({ fecha: '2026-10-13', departamento: 'PLANTA EXTERNA', responsable: 'Pedro Lema', proyecto: 'RUTA APERTURA 1', items: [{ serie: 'NUEVA-L5', codigo: art.codigo, metraje: 500, bodega: bodA }] });
+  const mv = store.all('MOVIMIENTOS').find(m => m.id_movimiento === r.movimientos[0]);
+  if (!mv.departamento || mv.responsable !== 'PEDRO LEMA' || mv.proyecto_ruta !== 'RUTA APERTURA 1') throw new Error(JSON.stringify([mv.departamento, mv.responsable, mv.proyecto_ruta])); return [mv.departamento, mv.responsable, mv.proyecto_ruta]; });
 err('apertura por lotes: rol consulta', () => con.registerOpeningBatch({ fecha: '2026-10-13', items: [{ serie: 'X1', codigo: art.codigo, metraje: 1, bodega: bodA }] }), /Permiso/);
 ok('lote: todas fallan → no registra nada', () => { const n = store.all('MOVIMIENTOS').length, r = bod.registerDispatchBatch({ ...comun, items: [{ serie: 'NOEXISTE-1', metraje: 5 }] });
   if (r.ok || r.registradas.length || store.all('MOVIMIENTOS').length !== n) throw new Error('registró'); return r.errores[0].error; });
