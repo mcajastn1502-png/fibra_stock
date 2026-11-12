@@ -46,6 +46,20 @@
     else ctl = '<input id="' + id + '" name="' + name + '" type="' + (type || 'text') + '" value="' + esc(o.value === undefined ? '' : o.value) + '"' + (o.readonly ? ' readonly' : '') + (o.disabled ? ' disabled' : '') + (o.list ? ' list="' + o.list + '"' : '') + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : '') + (type === 'number' ? ' inputmode="numeric" step="any"' : '') + (o.max ? ' max="' + o.max + '"' : '') + '>';
     return '<div class="f' + (o.full ? ' full' : '') + (o.wide ? ' wide' : '') + '"><label for="' + id + '">' + esc(label) + req + '</label>' + ctl + (o.hint ? '<span class="hint">' + o.hint + '</span>' : '') + '</div>';
   }
+  /** Campo de contraseña con botón "Mostrar / Ocultar" para ver lo que se escribe. */
+  function passField(name, label, o) {
+    o = o || {}; var id = 'f_' + name + '_' + Math.random().toString(36).slice(2, 7);
+    return '<div class="f"><label for="' + id + '">' + esc(label) + (o.req ? ' <span class="req">*</span>' : '') + '</label><div class="row pw-row">' +
+      '<input id="' + id + '" name="' + name + '" type="password" autocomplete="new-password" style="flex:1;min-width:0">' +
+      '<button type="button" class="btn sm pw-tog" aria-controls="' + id + '" aria-pressed="false" title="Mostrar la contraseña">Mostrar</button></div>' +
+      (o.hint ? '<span class="hint">' + o.hint + '</span>' : '') + '</div>';
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.pw-tog'); if (!b) return;
+    var inp = document.getElementById(b.getAttribute('aria-controls')); if (!inp) return;
+    var ver = inp.type === 'password'; inp.type = ver ? 'text' : 'password';
+    b.textContent = ver ? 'Ocultar' : 'Mostrar'; b.setAttribute('aria-pressed', String(ver)); b.title = ver ? 'Ocultar la contraseña' : 'Mostrar la contraseña';
+  });
   function datalists() {
     var c = BOOT.catalogos;
     return '<datalist id="dl-dep">' + c.departamentos.map(function (d) { return '<option value="' + esc(d) + '">'; }).join('') + '</datalist>' +
@@ -944,7 +958,7 @@
   SCREENS.usuarios = async function (v) {
     var u = await api('listUsers');
     v.innerHTML = '<div class="card"><div class="grid g2"><div><h3>Roles</h3><dl class="kv"><dt>ADMIN</dt><dd>Configura catálogos, corrige (anula) registros, cierra alertas y administra usuarios.</dd><dt>SUPERVISOR</dt><dd>Aprueba ajustes y bajas, valida saldos negativos, cierra alertas críticas.</dd><dt>BODEGA</dt><dd>Registra ingresos, despachos, devoluciones, préstamos, sobrantes y traslados.</dd><dt>ANALISTA</dt><dd>Revisa alertas, concilia, relaciona series y genera reportes.</dd><dt>CONSULTA</dt><dd>Consulta inventario, historial y reportes sin modificar.</dd></dl></div>' +
-      '<div><h3>Crear o editar usuario</h3><form id="uf"><div class="form-grid">' + field('email', 'Correo', 'email', { req: 1, hint: 'Se usa para recuperar la contraseña.' }) + field('usuario', 'Usuario', 'text', { req: 1, hint: 'Para ingresar. Minúsculas, números, punto o guion; sin espacios.' }) + field('rol', 'Rol', 'select', { options: Object.keys({ ADMIN: 1, SUPERVISOR: 1, BODEGA: 1, ANALISTA: 1, CONSULTA: 1 }), req: 1 }) + field('password', 'Contraseña (vacía = no cambia)', 'password') + '<div class="f"><label>Activo</label><input type="checkbox" name="activo" checked style="width:auto"></div></div><div class="actions"><button class="btn pri" type="submit">Guardar</button></div></form></div></div></div>' +
+      '<div><h3>Crear o editar usuario</h3><form id="uf"><div class="form-grid">' + field('email', 'Correo', 'email', { req: 1, hint: 'Se usa para recuperar la contraseña.' }) + field('usuario', 'Usuario', 'text', { req: 1, hint: 'Para ingresar. Minúsculas, números, punto o guion; sin espacios.' }) + field('rol', 'Rol', 'select', { options: Object.keys({ ADMIN: 1, SUPERVISOR: 1, BODEGA: 1, ANALISTA: 1, CONSULTA: 1 }), req: 1 }) + passField('password', 'Contraseña (vacía = no cambia)', { hint: 'Mínimo 8 caracteres.' }) + '<div class="f"><label>Activo</label><input type="checkbox" name="activo" checked style="width:auto"></div></div><div class="actions"><button class="btn pri" type="submit">Guardar</button></div></form></div></div></div>' +
       '<div class="card"><div id="ut"></div></div>';
     var f = v.querySelector('#uf');
     f.onsubmit = function (e) { e.preventDefault(); var d = formData(f); api('saveUser', d).then(function () { toast('Usuario guardado.', 'ok'); route_(); }).catch(function (x) { toast(x.message, 'err'); }); };

@@ -78,6 +78,7 @@ textarea { min-height: 64px; resize: vertical; }
 .btn.sm { padding: 3px 9px; font-size: 12.5px; }
 .btn:disabled { opacity: .55; cursor: default; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pw-row { flex-wrap: nowrap; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 14px; }
 .form-grid .full { grid-column: 1 / -1; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
