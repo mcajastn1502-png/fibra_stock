@@ -82,7 +82,7 @@
           : '<tr><td colspan="' + opts.cols.length + '" style="text-align:center;color:var(--ink-3);padding:20px">' + (opts.empty || 'Sin registros') + '</td></tr>') + '</tbody></table></div>';
       el.querySelector('.tq').oninput = function (e) { q = e.target.value; var pos = e.target.selectionStart; render(); var n = el.querySelector('.tq'); n.focus(); n.setSelectionRange(pos, pos); };
       el.querySelectorAll('th').forEach(function (th) { th.onclick = function () { var k = th.dataset.k; dir = sortK === k ? -dir : 1; sortK = k; render(); }; });
-      el.querySelector('.xl').onclick = function () { exportXlsx([{ titulo: opts.name || 'datos', filas: f.map(function (r) { var o = {}; opts.cols.forEach(function (c) { o[c.l] = r[c.k]; }); return o; }) }], opts.name || 'fibra'); };
+      el.querySelector('.xl').onclick = function () { exportXlsx([{ titulo: opts.name || 'datos', filas: f.map(function (r) { var o = {}; opts.cols.forEach(function (c) { if (!c.noExport) o[c.l] = r[c.k]; }); return o; }) }], opts.name || 'fibra'); };
       if (opts.onRow) el.querySelectorAll('tbody tr[data-i]').forEach(function (tr) { tr.onclick = function (e) { if (e.target.closest('button,a')) return; opts.onRow(rows[+tr.dataset.i]); }; });
       if (opts.after) opts.after(el);
     }
@@ -409,8 +409,60 @@
       field('texto', 'Texto libre', 'text', { value: invFilters.texto }) + '<div class="f" style="min-width:auto;flex:0"><label>Solo con saldo</label><input type="checkbox" name="solo_con_saldo"' + (invFilters.solo_con_saldo ? ' checked' : '') + ' style="width:auto"></div></form>') +
       '<div class="card"><div class="note">El saldo se calcula por serie desde el historial de movimientos. <b>Tipo de saldo</b> indica si está confirmado (COMPLETO), inferido (ESTIMADO), pendiente de Revisión, negativo o sin ingreso registrado. Los negativos nunca se convierten en cero.</div><div id="tb"></div></div>';
     bindFilters(v, invFilters, route_);
-    table(document.getElementById('tb'), { rows: r.filas, cols: serieCols(), name: 'inventario', onRow: function (s) { location.hash = '#vida/' + encodeURIComponent(s.id_serie); } });
+    var cols = [{ k: '_acc', l: 'Acciones', noExport: 1, f: function (x, r) { return '<button type="button" class="btn sm ser-ed" data-s="' + esc(r.id_serie) + '" title="Editar o eliminar la serie" aria-label="Editar o eliminar la serie ' + esc(r.id_serie) + '">✎ Editar</button>'; } }].concat(serieCols());
+    table(document.getElementById('tb'), { rows: r.filas, cols: cols, name: 'inventario', onRow: function (s) { location.hash = '#vida/' + encodeURIComponent(s.id_serie); },
+      after: function (el) { el.querySelectorAll('.ser-ed').forEach(function (b) { b.onclick = function () { editarSerie(b.dataset.s); }; }); } });
   };
+
+  /* ---- Editar / eliminar una serie (todos los usuarios, motivo obligatorio) ---- */
+  function editarSerie(id) {
+    api('seriesEditInfo', { serie: id }).then(function (info) {
+      var s = info.serie, c = BOOT.catalogos, ini = s.metraje_inicial === '' ? '' : +s.metraje_inicial;
+      var estados = info.estados.indexOf(s.estado_actual) >= 0 ? info.estados : [s.estado_actual].concat(info.estados);
+      modal('<h3>Editar serie ' + esc(s.id_serie) + '</h3>' +
+        '<div class="note">Saldo actual <b class="num">' + m(s.saldo_actual) + '</b>. Los cambios quedan en el historial de la serie con su usuario y el motivo; el saldo se recalcula.</div>' +
+        '<div class="form-grid">' + field('nueva_serie', 'Serie', 'text', { req: 1, value: s.id_serie, hint: 'Renombrar cambia la serie en todos sus registros.' }) +
+        field('codigo', 'Código de artículo', 'text', { req: 1, value: s.codigo, list: 'dl-art' }) + field('descripcion_art', 'Descripción', 'text', { value: artDesc(s.codigo) || s.descripcion, wide: 1 }) +
+        field('metraje_inicial', 'Metraje inicial (m)', 'number', { value: ini, hint: 'La diferencia se registra como ajuste.' }) +
+        field('bodega', 'Bodega', 'select', { options: c.bodegas.indexOf(s.bodega_actual) >= 0 || !s.bodega_actual ? c.bodegas : [s.bodega_actual].concat(c.bodegas), value: s.bodega_actual }) +
+        field('ubicacion', 'Ubicación', 'select', { options: c.ubicaciones, value: s.ubicacion_actual, empty: '—' }) +
+        field('estado', 'Estado', 'select', { options: estados, value: s.estado_actual, empty: undefined }) +
+        field('ruta', 'Ruta', 'text', { value: info.ruta, list: 'dl-ruta', wide: 1, hint: 'Se muestra en "Reservado para" cuando el estado es RESERVADA.' }) +
+        field('motivo', 'Motivo del cambio', 'textarea', { req: 1, full: 1 }) + '</div>' +
+        '<div class="note warn" style="margin-top:10px">Hasta el corte: si la serie viene de FIBRA QUITO 2026 y se cambia allá, la importación horaria puede volver a traer su nombre anterior.</div>' +
+        '<div class="actions" style="justify-content:space-between"><button class="btn danger" id="del">Eliminar serie…</button><span class="row"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></span></div>' + datalists(),
+      function (md, close) {
+        var cod = md.querySelector('[name=codigo]'), desc = md.querySelector('[name=descripcion_art]'); desc.readOnly = true;
+        cod.addEventListener('input', function () { desc.value = artDesc(cod.value); });
+        md.querySelector('#ok').onclick = function () {
+          var d = formData(md), b = md.querySelector('#ok'); delete d.descripcion_art; d.serie = s.id_serie; busy(b, true);
+          api('editSeries', d).then(function (r) { toast('Serie ' + r.serie.id_serie + ' actualizada: ' + r.cambios.join('; ') + '.', 'ok'); close(); route_(); })
+            .catch(function (x) { busy(b, false); toast(x.message, 'err'); });
+        };
+        md.querySelector('#del').onclick = function () { eliminarSerie(s, info.relacionados, close); };
+      });
+    }).catch(function (x) { toast(x.message, 'err'); });
+  }
+  function eliminarSerie(s, rel, cerrarEdicion) {
+    var nombres = { MOVIMIENTOS: 'movimientos', ALERTAS: 'alertas', PRESTAMOS: 'préstamos', SOBRANTES: 'sobrantes', RELACIONES: 'relaciones de familia', MATRIZ_NORMALIZADA: 'filas de la matriz importada' };
+    var lista = Object.keys(nombres).filter(function (k) { return rel[k]; }).map(function (k) { return '<li><b class="num">' + rel[k] + '</b> ' + nombres[k] + '</li>'; }).join('');
+    modal('<h3>Eliminar la serie ' + esc(s.id_serie) + '</h3>' +
+      '<div class="note err">Se borrará <b>definitivamente</b> la serie y todo lo relacionado:<ul style="margin:6px 0 0 18px">' + (lista || '<li>sin registros relacionados</li>') + '</ul>' +
+      'Antes se guarda una copia en la hoja <b>ELIMINADOS</b> y queda en Bitácora. Si la serie sigue en FIBRA QUITO 2026, volverá a aparecer con la próxima importación.</div>' +
+      '<div class="form-grid">' + field('motivo', 'Motivo de la eliminación', 'textarea', { req: 1, full: 1 }) +
+      field('confirmacion', 'Para confirmar, escriba la serie: ' + s.id_serie, 'text', { req: 1, wide: 1 }) + '</div>' +
+      '<div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn danger" id="ok" disabled>Eliminar definitivamente</button></div>',
+    function (md, close) {
+      var conf = md.querySelector('[name=confirmacion]'), ok = md.querySelector('#ok');
+      conf.addEventListener('input', function () { ok.disabled = conf.value.toUpperCase().replace(/\s+/g, '') !== s.id_serie; });
+      conf.focus();
+      ok.onclick = function () {
+        var d = formData(md); d.serie = s.id_serie; busy(ok, true);
+        api('deleteSeries', d).then(function () { toast('Serie ' + s.id_serie + ' eliminada. Copia en la hoja ELIMINADOS.', 'ok'); close(); cerrarEdicion(); route_(); })
+          .catch(function (x) { busy(ok, false); toast(x.message, 'err'); });
+      };
+    });
+  }
 
   /* ============================ 3. buscar ============================ */
   SCREENS.buscar = async function (v, q) {
@@ -430,25 +482,8 @@
   /** En la app, CAMBIO_DE_ESTADO se presenta como "Reservar"; los importados de la matriz conservan su nombre original. */
   function tipoLbl(t) {
     if (t.regla_aplicada === 'CORRECCION_METRAJE_INICIAL') return 'Corrección de metraje inicial';
+    if (t.regla_aplicada === 'CORRECCION_SERIE') return 'Corrección de datos de la serie';
     return t.tipo === 'CAMBIO_DE_ESTADO' && t.origen === 'APP' ? 'Reservar' : TIPO_LBL[t.tipo] || t.tipo;
-  }
-  /** Modal para corregir el metraje inicial conocido de la serie (cualquier usuario; motivo obligatorio). */
-  function editarMetrajeInicial(s) {
-    var actual = s.metraje_inicial === '' ? 0 : +s.metraje_inicial;
-    modal('<h3>Editar metraje inicial · ' + esc(s.id_serie) + '</h3>' +
-      '<div class="note">Actual: <b class="num">' + m(actual) + '</b> · saldo <b class="num">' + m(s.saldo_actual) + '</b>. La diferencia se registra como ajuste con su usuario y el motivo, y el saldo se recalcula.</div>' +
-      '<div class="form-grid">' + field('metraje_nuevo', 'Metraje inicial correcto (m)', 'number', { req: 1, value: actual || '', hint: 'Solo números, sin separador de miles.' }) +
-      field('motivo', 'Motivo de la corrección', 'textarea', { req: 1, full: 1, ph: 'Ej.: el rollo se midió de nuevo en bodega' }) + '<div class="full hint" id="dif"></div></div>' +
-      '<div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) {
-      var inp = md.querySelector('[name=metraje_nuevo]'), dif = md.querySelector('#dif');
-      var calc = function () { var d = (+inp.value || 0) - actual; dif.innerHTML = inp.value === '' || !d ? '' : 'Diferencia: <b class="num">' + (d > 0 ? '+' : '') + fmt(d) + ' m</b> → saldo nuevo <b class="num' + (+s.saldo_actual + d < 0 ? ' neg' : '') + '">' + m(+s.saldo_actual + d) + '</b>'; };
-      inp.addEventListener('input', calc); inp.focus(); inp.select();
-      md.querySelector('#ok').onclick = function () {
-        var d = formData(md), b = md.querySelector('#ok'); d.serie = s.id_serie; busy(b, true);
-        api('correctInitialMeter', d).then(function (r) { toast('Metraje inicial de ' + s.id_serie + ': ' + fmt(r.nuevo) + ' m (antes ' + fmt(r.anterior) + ' m). Saldo: ' + fmt(r.serie.saldo_actual) + ' m.', 'ok'); close(); route_(); })
-          .catch(function (x) { busy(b, false); toast(x.message, 'err'); });
-      };
-    });
   }
   SCREENS.vida = async function (v, serie) {
     v.innerHTML = '<div class="card"><form id="sf" class="row"><input name="q" value="' + esc(serie || '') + '" placeholder="Serie, código, descripción, hilos (48H), bodega, documento, proyecto o contratista" style="flex:1;min-width:220px"><button class="btn pri">Buscar</button></form><p class="hint">Con la serie exacta se abre su historial; con otro término se listan las series que coinciden.</p></div><div id="life"></div>';
@@ -468,7 +503,7 @@
     var M = function (l, x, raw) { return '<div class="m"><div class="l">' + l + '</div><div class="v' + (+x < 0 ? ' neg' : '') + '">' + (raw ? x : m(x)) + '</div></div>'; };
     box.innerHTML = '<div class="card"><div class="row" style="justify-content:space-between"><div><h3 style="margin:0">' + esc(s.id_serie) + ' ' + pill(s.estado_actual) + ' ' + pill(s.estado_saldo) + '</h3><div class="hint">' + esc(s.codigo) + ' · ' + esc(s.descripcion) + ' · ' + esc(s.hilos) + 'H · span ' + esc(s.span) + (s.serie_madre ? ' · serie madre <a href="#vida/' + encodeURIComponent(s.serie_madre) + '">' + esc(s.serie_madre) + '</a>' : '') + '</div></div>' +
       '<div class="row">' + (can('registrar') ? '<a class="btn sm" href="#movimiento/' + encodeURIComponent(s.id_serie) + '">Registrar movimiento</a><a class="btn sm" href="#devolucion/' + encodeURIComponent(s.id_serie) + '">Devolución</a>' : '') + '<button class="btn sm" onclick="window.print()">PDF</button></div></div>' +
-      '<div class="life-head" style="margin-top:14px">' + M('Metraje inicial conocido <button type="button" class="btn sm m-edit" id="ed-ini" title="Editar el metraje inicial" aria-label="Editar el metraje inicial">✎ Editar</button>', s.metraje_inicial) + M('Total despachado', s.total_despachado) + M('Total devuelto', s.total_devuelto) +
+      '<div class="life-head" style="margin-top:14px">' + M('Metraje inicial conocido', s.metraje_inicial) + M('Total despachado', s.total_despachado) + M('Total devuelto', s.total_devuelto) +
       M('Consumo calculado', s.consumo_calculado) + M('Prestado', s.total_prestado - s.total_dev_prestamo) + M('Dado de baja', s.total_baja) + M('Saldo actual', s.saldo_actual) +
       M('Bodega actual', esc(s.bodega_actual || '—') + '<div class="hint" style="font-family:var(--sans);font-weight:400">' + esc(s.ubicacion_actual || '') + '</div>', 1) + M('Confiabilidad', esc(s.nivel_confiabilidad), 1) + '</div></div>' +
       '<div class="card"><h3>Registros originales en la matriz<small>valores originales y normalizados</small></h3><div id="orig"></div></div>' +
@@ -489,7 +524,6 @@
       '<h3 style="margin-top:14px">Observaciones</h3>' + (L.observaciones.map(function (x) { return '<div class="hint" style="margin-bottom:4px">• ' + esc(x) + '</div>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
       '<div class="card"><h3>Familia del rollo<small>series relacionadas (no se fusionan automáticamente)</small></h3><div id="fam"></div></div>' +
       (L.prestamos.length || L.sobrantes.length ? '<div class="card"><h3>Préstamos y sobrantes</h3><div id="ps"></div></div>' : '') + '</div></div>';
-    document.getElementById('ed-ini').onclick = function () { editarMetrajeInicial(s); };
     table(document.getElementById('cons'), { rows: L.consumo_por_despacho, cols: [{ k: 'fecha', l: 'Fecha' }, { k: 'documento', l: 'Doc.' }, { k: 'despachado', l: 'Despachado', n: 1 }, { k: 'devuelto', l: 'Devuelto', n: 1 }, { k: 'consumo', l: 'Consumo', n: 1 }, { k: 'ruta', l: 'Ruta' }], name: 'consumo_' + s.id_serie });
     table(document.getElementById('al'), { rows: L.alertas, cols: [{ k: 'severidad', l: 'Sev.', f: function (x) { return pill(x, 1); } }, { k: 'tipo', l: 'Tipo', f: function (x, r) { return esc(x.replace(/_/g, ' ')) + '<span class="sub">' + esc(r.valor_encontrado) + ' · esperado: ' + esc(r.valor_esperado) + '</span>'; } }, { k: 'estado', l: 'Estado', f: function (x) { return pill(x); } }], name: 'alertas_' + s.id_serie, onRow: alertModal });
     var famEl = document.getElementById('fam');

@@ -174,6 +174,39 @@ ok('CONSULTA corrige el metraje inicial (+50)', () => { const r = con.correctIni
 ok('segunda corrección hacia abajo (−30) se acumula', () => { con.correctInitialMeter({ serie: sc.id_serie, metraje_nuevo: ini0 + 20, motivo: 'Ajuste fino' });
   const s2 = store.all('SERIES').find(s => s.id_serie === sc.id_serie); if (+s2.metraje_inicial !== ini0 + 20 || +s2.saldo_actual !== sal0 + 20) throw new Error([s2.metraje_inicial, s2.saldo_actual].join(' ')); return [s2.metraje_inicial, s2.saldo_actual]; });
 ok('historial muestra la corrección', () => { const t = con.rollLife({ serie: sc.id_serie }).timeline.filter(x => x.regla_aplicada === 'CORRECCION_METRAJE_INICIAL'); if (t.length !== 2 || t[0].delta !== 50 || t[1].delta !== -30) throw new Error(JSON.stringify(t.map(x => x.delta))); return t.map(x => x.delta); });
+// ---- Editar y eliminar serie (Inventario actual): todos los usuarios, motivo obligatorio
+const ser = () => k => store.all('SERIES').find(x => x.id_serie === k);
+const se = store.all('SERIES').find(s => s.estado_actual === 'DISPONIBLE' && +s.saldo_actual > 500 && +s.metraje_inicial > 0 && +s.total_despachado > 0 && FS.BODEGAS.indexOf(s.bodega_actual) >= 0);
+const otraBod = FS.BODEGAS.find(b => b !== se.bodega_actual), otroCod = store.all('ARTICULOS').find(a => a.codigo !== se.codigo).codigo;
+ok('seriesEditInfo trae ruta y relacionados', () => { const r = con.seriesEditInfo({ serie: se.id_serie }); if (!r.relacionados.MOVIMIENTOS || !r.estados.length) throw new Error(JSON.stringify(r.relacionados)); return r.relacionados; });
+err('editar sin motivo', () => con.editSeries({ serie: se.id_serie, bodega: otraBod }), /motivo/);
+err('editar sin cambios', () => con.editSeries({ serie: se.id_serie, motivo: 'x' }), /No hay cambios/);
+err('editar con código inexistente', () => con.editSeries({ serie: se.id_serie, codigo: 'NO-EXISTE', motivo: 'x' }), /no existe en el catálogo/);
+err('editar a estado no permitido', () => con.editSeries({ serie: se.id_serie, estado: 'BAJA', motivo: 'x' }), /no permitido/);
+err('reservar sin ruta', () => con.editSeries({ serie: se.id_serie, estado: 'RESERVADA', ruta: '', motivo: 'x' }), /ruta/);
+const ini1 = +se.metraje_inicial, sal1 = +se.saldo_actual;
+ok('CONSULTA edita código, bodega, ubicación, estado RESERVADA con ruta y metraje', () => {
+  const r = con.editSeries({ serie: se.id_serie, codigo: otroCod.toLowerCase(), bodega: otraBod, ubicacion: FS.UBICACIONES[1], estado: 'RESERVADA', ruta: 'RUTA EDIT 1', metraje_inicial: ini1 + 100, motivo: 'Conteo físico' });
+  const x = ser()(se.id_serie);
+  if (x.codigo !== otroCod || x.bodega_actual !== otraBod || x.ubicacion_actual !== FS.UBICACIONES[1] || x.estado_actual !== 'RESERVADA' || !/^RUTA EDIT 1/.test(x.reservado_para) || +x.metraje_inicial !== ini1 + 100 || +x.saldo_actual !== sal1 + 100)
+    throw new Error(JSON.stringify([x.codigo, x.bodega_actual, x.ubicacion_actual, x.estado_actual, x.reservado_para, x.metraje_inicial, x.saldo_actual]));
+  return r.cambios; });
+ok('la corrección queda en el historial', () => { const t = con.rollLife({ serie: se.id_serie }).timeline.filter(m => m.regla_aplicada === 'CORRECCION_SERIE'); if (t.length !== 1 || !/Conteo físico/.test(t[0].observacion_original)) throw new Error(JSON.stringify(t)); return t[0].documento; });
+const nk = se.id_serie + '-REN';
+err('renombrar a una serie existente', () => con.editSeries({ serie: se.id_serie, nueva_serie: S.id_serie, motivo: 'x' }), /Ya existe/);
+ok('renombrar la serie mueve todo lo relacionado', () => { const antes = con.seriesEditInfo({ serie: se.id_serie }).relacionados;
+  con.editSeries({ serie: se.id_serie, nueva_serie: nk.toLowerCase(), motivo: 'Error de digitación' });
+  const desp = con.seriesEditInfo({ serie: nk }).relacionados;
+  if (ser()(se.id_serie) || !ser()(nk) || desp.MOVIMIENTOS !== antes.MOVIMIENTOS || desp.ALERTAS !== antes.ALERTAS || +ser()(nk).saldo_actual !== sal1 + 100) throw new Error(JSON.stringify([antes, desp]));
+  return [se.id_serie + ' → ' + nk, desp]; });
+err('eliminar sin escribir la serie', () => con.deleteSeries({ serie: nk, motivo: 'x', confirmacion: 'OTRA' }), /escriba exactamente/);
+err('eliminar sin motivo', () => con.deleteSeries({ serie: nk, confirmacion: nk }), /motivo/);
+ok('eliminar borra todo y deja respaldo en ELIMINADOS', () => { const rel = con.seriesEditInfo({ serie: nk }).relacionados, total = Object.values(rel).reduce((a, b) => a + b, 0);
+  const r = con.deleteSeries({ serie: nk, motivo: 'Serie duplicada', confirmacion: nk.toLowerCase() });
+  const quedan = ['MOVIMIENTOS', 'ALERTAS', 'PRESTAMOS', 'SOBRANTES', 'MATRIZ_NORMALIZADA'].reduce((a, t) => a + store.all(t).filter(x => x.id_serie === nk || x.serie_normalizada === nk).length, 0);
+  const resp = store.all('ELIMINADOS').filter(x => x.id_serie === nk);
+  if (quedan || ser()(nk) || resp.length !== total || !JSON.parse(resp[0].datos)) throw new Error(JSON.stringify([quedan, resp.length, total]));
+  return [r.borrados, resp.length + ' filas en ELIMINADOS']; });
 ok('lote: todas fallan → no registra nada', () => { const n = store.all('MOVIMIENTOS').length, r = bod.registerDispatchBatch({ ...comun, items: [{ serie: 'NOEXISTE-1', metraje: 5 }] });
   if (r.ok || r.registradas.length || store.all('MOVIMIENTOS').length !== n) throw new Error('registró'); return r.errores[0].error; });
 console.log(`\n${pass} correctas, ${failn} fallidas`);

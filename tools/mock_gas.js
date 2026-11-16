@@ -134,6 +134,12 @@ if(require.main===module){
     const claves=Object.keys(cache).filter(k=>k.startsWith('tbl_')); console.log('caché: sin USUARIOS ni BITACORA:', !claves.some(k=>/_(USUARIOS|BITACORA)(_|$)/.test(k)), '· trozos:', claves.length);
   }
   console.log('export',JSON.stringify(call('exportReport',{tipo:'inventario'},tk).data));
+  { // eliminar serie por la API: crea la hoja ELIMINADOS si no existe y deja el respaldo
+    delete sheets.ELIMINADOS;
+    const sx=call('inventory',{filtros:{estado:'DISPONIBLE'}},tb).data.filas.find(s=>s.saldo_actual>0), info=call('seriesEditInfo',{serie:sx.id_serie},tb).data.relacionados;
+    const r=call('deleteSeries',{serie:sx.id_serie,motivo:'prueba',confirmacion:sx.id_serie},tb), total=Object.values(info).reduce((a,b)=>a+b,0);
+    console.log((r.ok && sheets.ELIMINADOS && sheets.ELIMINADOS.data.length-1===total && !call('inventory',{filtros:{texto:sx.id_serie}},tb).data.filas.some(s=>s.id_serie===sx.id_serie) ? 'eliminar ok: ' : 'FALLO eliminar: ')+'hoja ELIMINADOS creada con '+(sheets.ELIMINADOS?sheets.ELIMINADOS.data.length-1:0)+' filas de '+total+'; la serie ya no está en el inventario');
+  }
   console.log('users by bodega',call('listUsers',{},tb).error);
   // auditoría: editar un movimiento cerrado debe revertirse
   const mv=sheets.MOVIMIENTOS; const col=mv.data[0].indexOf('metraje')+1; const old=mv.data[2][col-1];

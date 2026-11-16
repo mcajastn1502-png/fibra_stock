@@ -412,6 +412,116 @@ FS.Service = function (store, user) {
     return r;
   };
 
+  /* ---------------- Editar / eliminar una serie (Inventario actual) ----------------
+   * Cualquier usuario con sesión, con motivo obligatorio. La ficha de la serie se calcula desde sus movimientos:
+   * - metraje inicial → ajuste por la diferencia (regla CORRECCION_METRAJE_INICIAL);
+   * - código, bodega, ubicación, estado y ruta → un movimiento de corrección sin metraje (regla CORRECCION_SERIE);
+   * - nombre de la serie → se reescribe en todas las tablas.
+   * Eliminar borra la serie y todo lo relacionado, copiando antes cada fila a la hoja ELIMINADOS. */
+  var ESTADOS_EDITABLES = ['DISPONIBLE', 'RESERVADA', 'MAL_ESTADO', 'EN_REVISION'];
+  var RELACIONADAS = [['MOVIMIENTOS', ['id_serie']], ['ALERTAS', ['id_serie']], ['PRESTAMOS', ['id_serie']], ['SOBRANTES', ['id_serie']],
+    ['RELACIONES', ['serie', 'serie_madre']], ['MATRIZ_NORMALIZADA', ['serie_normalizada']]];
+  function deLaSerie(campos, k) { return function (r) { return campos.some(function (c) { return r[c] === k; }); }; }
+  function contarRelacionados(k) {
+    var o = {}; RELACIONADAS.forEach(function (x) { o[x[0]] = store.all(x[0]).filter(deLaSerie(x[1], k)).length; }); return o;
+  }
+  /** Ajuste que lleva el metraje inicial de la serie a `nuevo` (null si no cambia). */
+  function ajusteMetrajeInicial(s, nuevo, motivo) {
+    var anterior = s.metraje_inicial === '' ? 0 : U.num(s.metraje_inicial), delta = U.round(nuevo - anterior, 2);
+    if (!delta) return null;
+    var saldo = U.round(U.num(s.saldo_actual) + delta, 2);
+    if (saldo < 0) fail('Con ' + nuevo + ' m de metraje inicial el saldo quedaría negativo (' + saldo + ' m): ya hay salidas registradas. Revise los despachos de la serie.');
+    var m = baseMov({ tipo: 'AJUSTE_MANUAL_AUTORIZADO', serie: s.id_serie, fecha: today, documento: store.nextId(FS.PREFIJOS_DOC.AJUSTE_MANUAL_AUTORIZADO),
+      observacion: 'CORRECCIÓN DE METRAJE INICIAL: ' + anterior + ' m → ' + nuevo + ' m. Motivo: ' + motivo }, s);
+    m.metraje = Math.abs(delta); m.signo = delta > 0 ? 1 : -1; m.bodega_destino = s.bodega_actual;
+    m.estado_resultante = s.estado_actual === 'AGOTADA' && saldo > 0 ? 'DISPONIBLE' : s.estado_actual;
+    m.regla_aplicada = 'CORRECCION_METRAJE_INICIAL';
+    return { m: m, anterior: anterior, nuevo: nuevo };
+  }
+
+  /** Datos para el modal de edición: la serie, su ruta actual y cuántos registros tiene relacionados. */
+  self.seriesEditInfo = function (p) {
+    need('leer');
+    var s = getSerie(p.serie); if (!s) fail('La serie no existe.');
+    var ult = FS.ultimoMovEstado(store.all('MOVIMIENTOS'))[s.id_serie] || {};
+    return { serie: s, ruta: ult.proyecto_ruta || '', estados: ESTADOS_EDITABLES, relacionados: contarRelacionados(s.id_serie) };
+  };
+
+  self.editSeries = function (p) {
+    need('leer');
+    var s = getSerie(p.serie); if (!s) fail('La serie no existe.');
+    var motivo = U.str(p.motivo).trim(); if (!motivo) fail('Indique el motivo del cambio.');
+    var k = s.id_serie, movs = [], cambios = [];
+    // nombre: se valida antes de guardar nada
+    var nk = U.isEmpty(p.nueva_serie) ? k : U.serieNorm(p.nueva_serie);
+    if (nk !== k && getSerie(nk)) fail('Ya existe la serie ' + nk + '. Elija otro nombre.');
+    // metraje inicial
+    if (!U.isEmpty(p.metraje_inicial)) {
+      var aj = ajusteMetrajeInicial(s, vMetraje(p.metraje_inicial), motivo);
+      if (aj) { movs.push(aj.m); cambios.push('metraje inicial ' + aj.anterior + ' → ' + aj.nuevo + ' m'); }
+    }
+    // código, bodega, ubicación, estado y ruta
+    var ult = FS.ultimoMovEstado(store.all('MOVIMIENTOS'))[k] || {};
+    var cod = U.key(p.codigo) || s.codigo, bod = p.bodega || s.bodega_actual, ubi = U.key(p.ubicacion) || s.ubicacion_actual,
+      est = p.estado || s.estado_actual, ruta = p.ruta === undefined ? (ult.proyecto_ruta || '') : U.str(p.ruta).trim();
+    if (cod !== s.codigo) {
+      if (!store.all('ARTICULOS').some(function (a) { return a.codigo === cod; })) fail('El código ' + p.codigo + ' no existe en el catálogo de artículos.');
+      cambios.push('código ' + (s.codigo || '—') + ' → ' + cod);
+    }
+    if (bod !== s.bodega_actual) { vBodega(bod); cambios.push('bodega ' + (s.bodega_actual || '—') + ' → ' + bod); }
+    if (ubi !== s.ubicacion_actual) { if (FS.UBICACIONES.indexOf(ubi) < 0) fail('Ubicación inválida: ' + ubi); cambios.push('ubicación ' + (s.ubicacion_actual || '—') + ' → ' + ubi); }
+    if (est !== s.estado_actual) { if (ESTADOS_EDITABLES.indexOf(est) < 0) fail('Estado no permitido: ' + est); cambios.push('estado ' + s.estado_actual + ' → ' + est); }
+    if (ruta !== (ult.proyecto_ruta || '')) cambios.push('ruta ' + (ult.proyecto_ruta || '—') + ' → ' + (ruta || '—'));
+    if (est === 'RESERVADA' && est !== s.estado_actual && !ruta) fail('Indique la ruta para la que se reserva.');
+    var datos = cambios.filter(function (c) { return !/^metraje/.test(c); });
+    if (datos.length) {
+      var m = baseMov({ tipo: 'CAMBIO_DE_ESTADO', serie: k, fecha: today, documento: store.nextId('CS'), proyecto: ruta, departamento: ult.departamento || '',
+        observacion: 'CORRECCIÓN DE DATOS: ' + datos.join('; ') + '. Motivo: ' + motivo }, s);
+      m.metraje = 0; m.signo = 0; m.codigo = cod; m.bodega_origen = bod; m.bodega_destino = bod; m.ubicacion = ubi; m.estado_resultante = est;
+      m.regla_aplicada = 'CORRECCION_SERIE';
+      movs.push(m);
+    }
+    if (nk !== k) cambios.push('serie ' + k + ' → ' + nk);
+    if (!cambios.length) fail('No hay cambios para guardar.');
+    if (movs.length) save(movs, 'EDITAR_SERIE');
+    if (nk !== k) {
+      var raw = U.str(p.nueva_serie).trim();
+      store.updateWhere('MOVIMIENTOS', function (r) { return r.id_serie === k; }, { id_serie: nk, serie_original: raw });
+      store.all('ALERTAS').filter(function (a) { return a.id_serie === k; }).forEach(function (a) {
+        store.update('ALERTAS', 'id_alerta', a.id_alerta, { id_serie: nk, clave: String(a.clave).split('|').map(function (x) { return x === k ? nk : x; }).join('|') });
+      });
+      store.updateWhere('PRESTAMOS', function (r) { return r.id_serie === k; }, { id_serie: nk, serie: raw });
+      store.updateWhere('SOBRANTES', function (r) { return r.id_serie === k; }, { id_serie: nk, serie: raw });
+      store.updateWhere('RELACIONES', function (r) { return r.serie === k; }, { serie: nk });
+      store.updateWhere('RELACIONES', function (r) { return r.serie_madre === k; }, { serie_madre: nk });
+      store.updateWhere('MATRIZ_NORMALIZADA', function (r) { return r.serie_normalizada === k; }, { serie_normalizada: nk });
+      self.recalc();
+    }
+    log('EDITAR_SERIE', 'SERIES', nk, '', k, nk, cambios.join('; ') + ' — Motivo: ' + motivo);
+    return { ok: true, serie: getSerie(nk), cambios: cambios };
+  };
+
+  /** Borra definitivamente la serie y todo lo relacionado; antes copia cada fila a la hoja ELIMINADOS. */
+  self.deleteSeries = function (p) {
+    need('leer');
+    var s = getSerie(p.serie); if (!s) fail('La serie no existe.');
+    var k = s.id_serie, motivo = U.str(p.motivo).trim();
+    if (!motivo) fail('Indique el motivo de la eliminación.');
+    if (U.serieNorm(p.confirmacion) !== k) fail('Para confirmar, escriba exactamente la serie ' + k + '.');
+    var borrados = {}, respaldo = [];
+    RELACIONADAS.forEach(function (x) {
+      var rows = store.all(x[0]), pred = deLaSerie(x[1], k), del = rows.filter(pred);
+      borrados[x[0]] = del.length; if (!del.length) return;
+      del.forEach(function (r) { respaldo.push({ fecha_hora: now, usuario: user.email, id_serie: k, tabla: x[0], motivo: motivo, datos: JSON.stringify(r) }); });
+      store.replace(x[0], rows.filter(function (r) { return !pred(r); }));
+    });
+    if (respaldo.length) store.append('ELIMINADOS', respaldo);
+    var res = Object.keys(borrados).filter(function (t) { return borrados[t]; }).map(function (t) { return borrados[t] + ' ' + t; }).join(', ');
+    log('ELIMINAR_SERIE', 'SERIES', k, '', '', '', 'Motivo: ' + motivo + ' — borrados: ' + res + ' (copia en ELIMINADOS)');
+    self.recalc();
+    return { ok: true, serie: k, borrados: borrados };
+  };
+
   /** Devolución relacionada con el despacho original (o sin referencia → Revisión). */
   self.registerReturn = function (p) {
     need('registrar');

@@ -56,6 +56,7 @@ FS.SheetStore = function () {
   function hojaDe(c) { return c.sh || (c.sh = sheet(c.t)); }
   function sheet(t) {
     var sh = book().getSheetByName(t);
+    if (!sh && FS.SCHEMA[t]) { sh = book().insertSheet(t); sh.getRange(1, 1, 1, FS.SCHEMA[t].length).setValues([FS.SCHEMA[t]]).setFontWeight('bold'); }
     if (!sh) throw new Error('No existe la hoja ' + t + '. Ejecute "Fibra Stock › 1. Crear estructura".');
     return sh;
   }

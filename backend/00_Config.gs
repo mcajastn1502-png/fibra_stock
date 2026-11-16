@@ -43,6 +43,8 @@ FS.SCHEMA = {
     'valor_encontrado', 'valor_esperado', 'descripcion', 'estado', 'responsable', 'creada_en', 'fecha_resolucion',
     'comentario_resolucion', 'resuelta_por', 'dinamica'],
   RELACIONES: ['serie', 'serie_madre', 'tipo_relacion', 'estado', 'sugerida_por', 'confirmada_por', 'fecha'],
+  /** Respaldo de lo borrado al eliminar una serie: una fila por registro, con sus datos en JSON. */
+  ELIMINADOS: ['fecha_hora', 'usuario', 'id_serie', 'tabla', 'motivo', 'datos'],
   CATALOGOS: ['catalogo', 'valor_original', 'valor_normalizado', 'clase', 'activo', 'nota'],
   PARAMETROS: ['clave', 'valor', 'descripcion'],
   ABASTECIMIENTO_PARAM: ['familia', 'descripcion', 'stock_minimo', 'lead_time_dias', 'dias_seguridad',
