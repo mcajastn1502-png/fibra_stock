@@ -428,7 +428,28 @@
     PRESTAMO: 'Préstamo', DEVOLUCION_DE_PRESTAMO: 'Devolución de préstamo', TRASLADO_ENTRE_BODEGAS: 'Traslado', CORTE_O_FRACCIONAMIENTO: 'Corte / fraccionamiento', SOBRANTE_DE_OBRA: 'Sobrante de obra',
     BAJA_POR_MAL_ESTADO: 'Baja por mal estado', AJUSTE_MANUAL_AUTORIZADO: 'Ajuste autorizado', CAMBIO_DE_ESTADO: 'Cambio de estado / registro posterior' };
   /** En la app, CAMBIO_DE_ESTADO se presenta como "Reservar"; los importados de la matriz conservan su nombre original. */
-  function tipoLbl(t) { return t.tipo === 'CAMBIO_DE_ESTADO' && t.origen === 'APP' ? 'Reservar' : TIPO_LBL[t.tipo] || t.tipo; }
+  function tipoLbl(t) {
+    if (t.regla_aplicada === 'CORRECCION_METRAJE_INICIAL') return 'Corrección de metraje inicial';
+    return t.tipo === 'CAMBIO_DE_ESTADO' && t.origen === 'APP' ? 'Reservar' : TIPO_LBL[t.tipo] || t.tipo;
+  }
+  /** Modal para corregir el metraje inicial conocido de la serie (cualquier usuario; motivo obligatorio). */
+  function editarMetrajeInicial(s) {
+    var actual = s.metraje_inicial === '' ? 0 : +s.metraje_inicial;
+    modal('<h3>Editar metraje inicial · ' + esc(s.id_serie) + '</h3>' +
+      '<div class="note">Actual: <b class="num">' + m(actual) + '</b> · saldo <b class="num">' + m(s.saldo_actual) + '</b>. La diferencia se registra como ajuste con su usuario y el motivo, y el saldo se recalcula.</div>' +
+      '<div class="form-grid">' + field('metraje_nuevo', 'Metraje inicial correcto (m)', 'number', { req: 1, value: actual || '', hint: 'Solo números, sin separador de miles.' }) +
+      field('motivo', 'Motivo de la corrección', 'textarea', { req: 1, full: 1, ph: 'Ej.: el rollo se midió de nuevo en bodega' }) + '<div class="full hint" id="dif"></div></div>' +
+      '<div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) {
+      var inp = md.querySelector('[name=metraje_nuevo]'), dif = md.querySelector('#dif');
+      var calc = function () { var d = (+inp.value || 0) - actual; dif.innerHTML = inp.value === '' || !d ? '' : 'Diferencia: <b class="num">' + (d > 0 ? '+' : '') + fmt(d) + ' m</b> → saldo nuevo <b class="num' + (+s.saldo_actual + d < 0 ? ' neg' : '') + '">' + m(+s.saldo_actual + d) + '</b>'; };
+      inp.addEventListener('input', calc); inp.focus(); inp.select();
+      md.querySelector('#ok').onclick = function () {
+        var d = formData(md), b = md.querySelector('#ok'); d.serie = s.id_serie; busy(b, true);
+        api('correctInitialMeter', d).then(function (r) { toast('Metraje inicial de ' + s.id_serie + ': ' + fmt(r.nuevo) + ' m (antes ' + fmt(r.anterior) + ' m). Saldo: ' + fmt(r.serie.saldo_actual) + ' m.', 'ok'); close(); route_(); })
+          .catch(function (x) { busy(b, false); toast(x.message, 'err'); });
+      };
+    });
+  }
   SCREENS.vida = async function (v, serie) {
     v.innerHTML = '<div class="card"><form id="sf" class="row"><input name="q" value="' + esc(serie || '') + '" placeholder="Serie, código, descripción, hilos (48H), bodega, documento, proyecto o contratista" style="flex:1;min-width:220px"><button class="btn pri">Buscar</button></form><p class="hint">Con la serie exacta se abre su historial; con otro término se listan las series que coinciden.</p></div><div id="life"></div>';
     v.querySelector('#sf').onsubmit = function (e) { e.preventDefault(); var q = formData(e.target).q; if (q && q.trim()) location.hash = '#vida/' + encodeURIComponent(q.trim()); };
@@ -447,7 +468,7 @@
     var M = function (l, x, raw) { return '<div class="m"><div class="l">' + l + '</div><div class="v' + (+x < 0 ? ' neg' : '') + '">' + (raw ? x : m(x)) + '</div></div>'; };
     box.innerHTML = '<div class="card"><div class="row" style="justify-content:space-between"><div><h3 style="margin:0">' + esc(s.id_serie) + ' ' + pill(s.estado_actual) + ' ' + pill(s.estado_saldo) + '</h3><div class="hint">' + esc(s.codigo) + ' · ' + esc(s.descripcion) + ' · ' + esc(s.hilos) + 'H · span ' + esc(s.span) + (s.serie_madre ? ' · serie madre <a href="#vida/' + encodeURIComponent(s.serie_madre) + '">' + esc(s.serie_madre) + '</a>' : '') + '</div></div>' +
       '<div class="row">' + (can('registrar') ? '<a class="btn sm" href="#movimiento/' + encodeURIComponent(s.id_serie) + '">Registrar movimiento</a><a class="btn sm" href="#devolucion/' + encodeURIComponent(s.id_serie) + '">Devolución</a>' : '') + '<button class="btn sm" onclick="window.print()">PDF</button></div></div>' +
-      '<div class="life-head" style="margin-top:14px">' + M('Metraje inicial conocido', s.metraje_inicial) + M('Total despachado', s.total_despachado) + M('Total devuelto', s.total_devuelto) +
+      '<div class="life-head" style="margin-top:14px">' + M('Metraje inicial conocido <button type="button" class="btn sm m-edit" id="ed-ini" title="Editar el metraje inicial" aria-label="Editar el metraje inicial">✎ Editar</button>', s.metraje_inicial) + M('Total despachado', s.total_despachado) + M('Total devuelto', s.total_devuelto) +
       M('Consumo calculado', s.consumo_calculado) + M('Prestado', s.total_prestado - s.total_dev_prestamo) + M('Dado de baja', s.total_baja) + M('Saldo actual', s.saldo_actual) +
       M('Bodega actual', esc(s.bodega_actual || '—') + '<div class="hint" style="font-family:var(--sans);font-weight:400">' + esc(s.ubicacion_actual || '') + '</div>', 1) + M('Confiabilidad', esc(s.nivel_confiabilidad), 1) + '</div></div>' +
       '<div class="card"><h3>Registros originales en la matriz<small>valores originales y normalizados</small></h3><div id="orig"></div></div>' +
@@ -468,6 +489,7 @@
       '<h3 style="margin-top:14px">Observaciones</h3>' + (L.observaciones.map(function (x) { return '<div class="hint" style="margin-bottom:4px">• ' + esc(x) + '</div>'; }).join('') || '<span class="hint">—</span>') + '</div>' +
       '<div class="card"><h3>Familia del rollo<small>series relacionadas (no se fusionan automáticamente)</small></h3><div id="fam"></div></div>' +
       (L.prestamos.length || L.sobrantes.length ? '<div class="card"><h3>Préstamos y sobrantes</h3><div id="ps"></div></div>' : '') + '</div></div>';
+    document.getElementById('ed-ini').onclick = function () { editarMetrajeInicial(s); };
     table(document.getElementById('cons'), { rows: L.consumo_por_despacho, cols: [{ k: 'fecha', l: 'Fecha' }, { k: 'documento', l: 'Doc.' }, { k: 'despachado', l: 'Despachado', n: 1 }, { k: 'devuelto', l: 'Devuelto', n: 1 }, { k: 'consumo', l: 'Consumo', n: 1 }, { k: 'ruta', l: 'Ruta' }], name: 'consumo_' + s.id_serie });
     table(document.getElementById('al'), { rows: L.alertas, cols: [{ k: 'severidad', l: 'Sev.', f: function (x) { return pill(x, 1); } }, { k: 'tipo', l: 'Tipo', f: function (x, r) { return esc(x.replace(/_/g, ' ')) + '<span class="sub">' + esc(r.valor_encontrado) + ' · esperado: ' + esc(r.valor_esperado) + '</span>'; } }, { k: 'estado', l: 'Estado', f: function (x) { return pill(x); } }], name: 'alertas_' + s.id_serie, onRow: alertModal });
     var famEl = document.getElementById('fam');

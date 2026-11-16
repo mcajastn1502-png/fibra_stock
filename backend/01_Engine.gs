@@ -543,7 +543,10 @@ FS.computeSeries = function (data) {
       else if (g === 'dev_prestamo') t.dev_prestamo += mt;
       else if (g === 'baja') t.baja += mt;
       else if (g === 'corte') { t.corte += sg * mt; if (sg > 0 && inicial === '') inicial = mt; }
-      else if (g === 'ajuste') t.ajuste += sg * mt;
+      else if (g === 'ajuste') {
+        t.ajuste += sg * mt;
+        if (m.regla_aplicada === 'CORRECCION_METRAJE_INICIAL') inicial = U.round((inicial === '' ? 0 : inicial) + sg * mt, 2); // corrección del metraje inicial
+      }
       if (['DESPACHO', 'PRESTAMO', 'BAJA_POR_MAL_ESTADO'].indexOf(m.tipo) >= 0) { if (m.bodega_origen) bodega = m.bodega_origen; }
       else if (m.bodega_destino && FS.BODEGAS.indexOf(m.bodega_destino) >= 0) bodega = m.bodega_destino;
       else if (!bodega && m.bodega_origen) bodega = m.bodega_origen;

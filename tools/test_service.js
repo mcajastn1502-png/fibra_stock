@@ -160,6 +160,20 @@ ok('apertura por lotes: guarda departamento, encargado y ruta', () => { const r 
   const mv = store.all('MOVIMIENTOS').find(m => m.id_movimiento === r.movimientos[0]);
   if (!mv.departamento || mv.responsable !== 'PEDRO LEMA' || mv.proyecto_ruta !== 'RUTA APERTURA 1') throw new Error(JSON.stringify([mv.departamento, mv.responsable, mv.proyecto_ruta])); return [mv.departamento, mv.responsable, mv.proyecto_ruta]; });
 err('apertura por lotes: rol consulta', () => con.registerOpeningBatch({ fecha: '2026-10-13', items: [{ serie: 'X1', codigo: art.codigo, metraje: 1, bodega: bodA }] }), /Permiso/);
+// ---- Corrección del metraje inicial (cualquier usuario, motivo obligatorio)
+const sc = store.all('SERIES').find(s => s.estado_actual === 'DISPONIBLE' && +s.saldo_actual > 500 && +s.metraje_inicial > 0 && +s.total_despachado > 0);
+const sci = store.all('SERIES').find(s => s.id_serie === sc.id_serie), ini0 = +sci.metraje_inicial, sal0 = +sci.saldo_actual;
+err('corrección sin motivo', () => con.correctInitialMeter({ serie: sc.id_serie, metraje_nuevo: ini0 + 50 }), /motivo/);
+err('corrección con el mismo valor', () => con.correctInitialMeter({ serie: sc.id_serie, metraje_nuevo: ini0, motivo: 'x' }), /igual al actual/);
+err('corrección que deja saldo negativo', () => con.correctInitialMeter({ serie: sc.id_serie, metraje_nuevo: ini0 - sal0 - 10, motivo: 'x' }), /negativo/);
+ok('CONSULTA corrige el metraje inicial (+50)', () => { const r = con.correctInitialMeter({ serie: sc.id_serie, metraje_nuevo: ini0 + 50, motivo: 'Medido en bodega' });
+  const s2 = store.all('SERIES').find(s => s.id_serie === sc.id_serie), mv = store.all('MOVIMIENTOS').find(m => m.id_movimiento === r.movimientos[0]);
+  if (+s2.metraje_inicial !== ini0 + 50 || +s2.saldo_actual !== sal0 + 50 || mv.tipo !== 'AJUSTE_MANUAL_AUTORIZADO' || mv.aprobacion !== 'NO_REQUIERE' || mv.regla_aplicada !== 'CORRECCION_METRAJE_INICIAL' || mv.origen !== 'APP' || !/Medido en bodega/.test(mv.observacion_original))
+    throw new Error(JSON.stringify([s2.metraje_inicial, s2.saldo_actual, mv.tipo, mv.aprobacion, mv.regla_aplicada]));
+  return [ini0 + ' → ' + s2.metraje_inicial, 'saldo ' + sal0 + ' → ' + s2.saldo_actual, r.documento]; });
+ok('segunda corrección hacia abajo (−30) se acumula', () => { con.correctInitialMeter({ serie: sc.id_serie, metraje_nuevo: ini0 + 20, motivo: 'Ajuste fino' });
+  const s2 = store.all('SERIES').find(s => s.id_serie === sc.id_serie); if (+s2.metraje_inicial !== ini0 + 20 || +s2.saldo_actual !== sal0 + 20) throw new Error([s2.metraje_inicial, s2.saldo_actual].join(' ')); return [s2.metraje_inicial, s2.saldo_actual]; });
+ok('historial muestra la corrección', () => { const t = con.rollLife({ serie: sc.id_serie }).timeline.filter(x => x.regla_aplicada === 'CORRECCION_METRAJE_INICIAL'); if (t.length !== 2 || t[0].delta !== 50 || t[1].delta !== -30) throw new Error(JSON.stringify(t.map(x => x.delta))); return t.map(x => x.delta); });
 ok('lote: todas fallan → no registra nada', () => { const n = store.all('MOVIMIENTOS').length, r = bod.registerDispatchBatch({ ...comun, items: [{ serie: 'NOEXISTE-1', metraje: 5 }] });
   if (r.ok || r.registradas.length || store.all('MOVIMIENTOS').length !== n) throw new Error('registró'); return r.errores[0].error; });
 console.log(`\n${pass} correctas, ${failn} fallidas`);

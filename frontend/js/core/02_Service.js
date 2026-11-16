@@ -388,6 +388,30 @@ FS.Service = function (store, user) {
     a.id_alerta = store.nextId('ALE'); store.append('ALERTAS', [a]);
   }
 
+  /**
+   * Corrige el "metraje inicial conocido" de una serie. Se registra como ajuste por la diferencia (origen APP, sin
+   * aprobación) con regla CORRECCION_METRAJE_INICIAL: queda en el historial con usuario y motivo, y la importación
+   * horaria de la matriz no lo borra. Lo puede hacer cualquier usuario con sesión.
+   */
+  self.correctInitialMeter = function (p) {
+    need('leer');
+    var s = getSerie(p.serie); if (!s) fail('La serie no existe.');
+    if (U.isEmpty(p.motivo)) fail('Indique el motivo de la corrección.');
+    var nuevo = vMetraje(p.metraje_nuevo), anterior = s.metraje_inicial === '' ? 0 : U.num(s.metraje_inicial);
+    var delta = U.round(nuevo - anterior, 2);
+    if (!delta) fail('El metraje nuevo es igual al actual (' + anterior + ' m).');
+    var saldo = U.round(U.num(s.saldo_actual) + delta, 2);
+    if (saldo < 0) fail('Con ' + nuevo + ' m de metraje inicial el saldo quedaría negativo (' + saldo + ' m): ya hay salidas registradas. Revise los despachos de la serie.');
+    var m = baseMov({ tipo: 'AJUSTE_MANUAL_AUTORIZADO', serie: s.id_serie, fecha: today, documento: store.nextId(FS.PREFIJOS_DOC.AJUSTE_MANUAL_AUTORIZADO),
+      observacion: 'CORRECCIÓN DE METRAJE INICIAL: ' + anterior + ' m → ' + nuevo + ' m. Motivo: ' + U.str(p.motivo).trim() }, s);
+    m.metraje = Math.abs(delta); m.signo = delta > 0 ? 1 : -1; m.bodega_destino = s.bodega_actual;
+    m.estado_resultante = s.estado_actual === 'AGOTADA' && saldo > 0 ? 'DISPONIBLE' : s.estado_actual;
+    m.regla_aplicada = 'CORRECCION_METRAJE_INICIAL';
+    var r = save([m], 'CORREGIR_METRAJE_INICIAL');
+    r.anterior = anterior; r.nuevo = nuevo; r.documento = m.documento;
+    return r;
+  };
+
   /** Devolución relacionada con el despacho original (o sin referencia → Revisión). */
   self.registerReturn = function (p) {
     need('registrar');
