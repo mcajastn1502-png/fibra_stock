@@ -397,18 +397,10 @@ FS.Service = function (store, user) {
     need('leer');
     var s = getSerie(p.serie); if (!s) fail('La serie no existe.');
     if (U.isEmpty(p.motivo)) fail('Indique el motivo de la corrección.');
-    var nuevo = vMetraje(p.metraje_nuevo), anterior = s.metraje_inicial === '' ? 0 : U.num(s.metraje_inicial);
-    var delta = U.round(nuevo - anterior, 2);
-    if (!delta) fail('El metraje nuevo es igual al actual (' + anterior + ' m).');
-    var saldo = U.round(U.num(s.saldo_actual) + delta, 2);
-    if (saldo < 0) fail('Con ' + nuevo + ' m de metraje inicial el saldo quedaría negativo (' + saldo + ' m): ya hay salidas registradas. Revise los despachos de la serie.');
-    var m = baseMov({ tipo: 'AJUSTE_MANUAL_AUTORIZADO', serie: s.id_serie, fecha: today, documento: store.nextId(FS.PREFIJOS_DOC.AJUSTE_MANUAL_AUTORIZADO),
-      observacion: 'CORRECCIÓN DE METRAJE INICIAL: ' + anterior + ' m → ' + nuevo + ' m. Motivo: ' + U.str(p.motivo).trim() }, s);
-    m.metraje = Math.abs(delta); m.signo = delta > 0 ? 1 : -1; m.bodega_destino = s.bodega_actual;
-    m.estado_resultante = s.estado_actual === 'AGOTADA' && saldo > 0 ? 'DISPONIBLE' : s.estado_actual;
-    m.regla_aplicada = 'CORRECCION_METRAJE_INICIAL';
-    var r = save([m], 'CORREGIR_METRAJE_INICIAL');
-    r.anterior = anterior; r.nuevo = nuevo; r.documento = m.documento;
+    var aj = ajusteMetrajeInicial(s, vMetraje(p.metraje_nuevo), U.str(p.motivo).trim());
+    if (!aj) fail('El metraje nuevo es igual al actual (' + (s.metraje_inicial === '' ? 0 : U.num(s.metraje_inicial)) + ' m).');
+    var r = save([aj.m], 'CORREGIR_METRAJE_INICIAL');
+    r.anterior = aj.anterior; r.nuevo = aj.nuevo; r.documento = aj.m.documento;
     return r;
   };
 
@@ -425,18 +417,25 @@ FS.Service = function (store, user) {
   function contarRelacionados(k) {
     var o = {}; RELACIONADAS.forEach(function (x) { o[x[0]] = store.all(x[0]).filter(deLaSerie(x[1], k)).length; }); return o;
   }
-  /** Ajuste que lleva el metraje inicial de la serie a `nuevo` (null si no cambia). */
+  /**
+   * Movimiento de ajuste por `delta` metros. No fija estado (salvo reactivar una serie AGOTADA que vuelve a tener saldo),
+   * así no borra la ruta ni el departamento de una reserva: el estado lo sigue dando el último movimiento que lo fijó.
+   */
+  function movAjuste(s, delta, saldoNuevo, regla, texto) {
+    var m = baseMov({ tipo: 'AJUSTE_MANUAL_AUTORIZADO', serie: s.id_serie, fecha: today, documento: store.nextId(FS.PREFIJOS_DOC.AJUSTE_MANUAL_AUTORIZADO), observacion: texto }, s);
+    m.metraje = Math.abs(delta); m.signo = delta > 0 ? 1 : -1; m.bodega_destino = s.bodega_actual;
+    m.estado_resultante = s.estado_actual === 'AGOTADA' && saldoNuevo > 0 ? 'DISPONIBLE' : '';
+    m.regla_aplicada = regla;
+    return m;
+  }
+  /** Ajuste que lleva el metraje inicial de la serie a `nuevo` (null si no cambia); el saldo cambia en la misma diferencia. */
   function ajusteMetrajeInicial(s, nuevo, motivo) {
     var anterior = s.metraje_inicial === '' ? 0 : U.num(s.metraje_inicial), delta = U.round(nuevo - anterior, 2);
     if (!delta) return null;
     var saldo = U.round(U.num(s.saldo_actual) + delta, 2);
     if (saldo < 0) fail('Con ' + nuevo + ' m de metraje inicial el saldo quedaría negativo (' + saldo + ' m): ya hay salidas registradas. Revise los despachos de la serie.');
-    var m = baseMov({ tipo: 'AJUSTE_MANUAL_AUTORIZADO', serie: s.id_serie, fecha: today, documento: store.nextId(FS.PREFIJOS_DOC.AJUSTE_MANUAL_AUTORIZADO),
-      observacion: 'CORRECCIÓN DE METRAJE INICIAL: ' + anterior + ' m → ' + nuevo + ' m. Motivo: ' + motivo }, s);
-    m.metraje = Math.abs(delta); m.signo = delta > 0 ? 1 : -1; m.bodega_destino = s.bodega_actual;
-    m.estado_resultante = s.estado_actual === 'AGOTADA' && saldo > 0 ? 'DISPONIBLE' : s.estado_actual;
-    m.regla_aplicada = 'CORRECCION_METRAJE_INICIAL';
-    return { m: m, anterior: anterior, nuevo: nuevo };
+    var m = movAjuste(s, delta, saldo, 'CORRECCION_METRAJE_INICIAL', 'CORRECCIÓN DE METRAJE INICIAL: ' + anterior + ' m → ' + nuevo + ' m. Motivo: ' + motivo);
+    return { m: m, anterior: anterior, nuevo: nuevo, saldo: saldo };
   }
 
   /** Datos para el modal de edición: la serie, su ruta actual y cuántos registros tiene relacionados. */
@@ -444,7 +443,8 @@ FS.Service = function (store, user) {
     need('leer');
     var s = getSerie(p.serie); if (!s) fail('La serie no existe.');
     var ult = FS.ultimoMovEstado(store.all('MOVIMIENTOS'))[s.id_serie] || {};
-    return { serie: s, ruta: ult.proyecto_ruta || '', estados: ESTADOS_EDITABLES, relacionados: contarRelacionados(s.id_serie) };
+    return { serie: s, ruta: ult.proyecto_ruta || '', departamento: ult.departamento || '', responsable: ult.responsable || '',
+      estados: ESTADOS_EDITABLES, relacionados: contarRelacionados(s.id_serie) };
   };
 
   self.editSeries = function (p) {
@@ -455,15 +455,30 @@ FS.Service = function (store, user) {
     // nombre: se valida antes de guardar nada
     var nk = U.isEmpty(p.nueva_serie) ? k : U.serieNorm(p.nueva_serie);
     if (nk !== k && getSerie(nk)) fail('Ya existe la serie ' + nk + '. Elija otro nombre.');
-    // metraje inicial
+    // metraje inicial (mueve también el saldo)
+    var saldoTras = U.round(U.num(s.saldo_actual), 2);
     if (!U.isEmpty(p.metraje_inicial)) {
       var aj = ajusteMetrajeInicial(s, vMetraje(p.metraje_inicial), motivo);
-      if (aj) { movs.push(aj.m); cambios.push('metraje inicial ' + aj.anterior + ' → ' + aj.nuevo + ' m'); }
+      if (aj) { movs.push(aj.m); saldoTras = aj.saldo; cambios.push('metraje inicial ' + aj.anterior + ' → ' + aj.nuevo + ' m'); }
+    }
+    // saldo: ajuste por la diferencia hasta el valor escrito (el metraje inicial no cambia)
+    if (!U.isEmpty(p.saldo)) {
+      var ps = U.parseMetraje(p.saldo);
+      if (ps.value === null) fail('Saldo inválido: "' + p.saldo + '".');
+      if (ps.ambiguo) fail('Saldo ambiguo ("' + p.saldo + '"). Ingréselo sin separadores de miles, por ejemplo 3156.');
+      if (ps.value < 0) fail('El saldo no puede quedar negativo.');
+      var dSaldo = U.round(ps.value - saldoTras, 2);
+      if (dSaldo) {
+        movs.push(movAjuste(s, dSaldo, ps.value, 'CORRECCION_SALDO', 'CORRECCIÓN DE SALDO: ' + saldoTras + ' m → ' + ps.value + ' m. Motivo: ' + motivo));
+        cambios.push('saldo ' + saldoTras + ' → ' + ps.value + ' m');
+      }
     }
     // código, bodega, ubicación, estado y ruta
     var ult = FS.ultimoMovEstado(store.all('MOVIMIENTOS'))[k] || {};
     var cod = U.key(p.codigo) || s.codigo, bod = p.bodega || s.bodega_actual, ubi = U.key(p.ubicacion) || s.ubicacion_actual,
       est = p.estado || s.estado_actual, ruta = p.ruta === undefined ? (ult.proyecto_ruta || '') : U.str(p.ruta).trim();
+    var dep = p.departamento === undefined ? (ult.departamento || '') : (normDep(p.departamento).normalizado || U.key(p.departamento)),
+      resp = p.responsable === undefined ? (ult.responsable || '') : U.key(p.responsable);
     if (cod !== s.codigo) {
       if (!store.all('ARTICULOS').some(function (a) { return a.codigo === cod; })) fail('El código ' + p.codigo + ' no existe en el catálogo de artículos.');
       cambios.push('código ' + (s.codigo || '—') + ' → ' + cod);
@@ -472,10 +487,12 @@ FS.Service = function (store, user) {
     if (ubi !== s.ubicacion_actual) { if (FS.UBICACIONES.indexOf(ubi) < 0) fail('Ubicación inválida: ' + ubi); cambios.push('ubicación ' + (s.ubicacion_actual || '—') + ' → ' + ubi); }
     if (est !== s.estado_actual) { if (ESTADOS_EDITABLES.indexOf(est) < 0) fail('Estado no permitido: ' + est); cambios.push('estado ' + s.estado_actual + ' → ' + est); }
     if (ruta !== (ult.proyecto_ruta || '')) cambios.push('ruta ' + (ult.proyecto_ruta || '—') + ' → ' + (ruta || '—'));
+    if (dep !== (ult.departamento || '')) cambios.push('departamento ' + (ult.departamento || '—') + ' → ' + (dep || '—'));
+    if (resp !== (ult.responsable || '')) cambios.push('responsable ' + (ult.responsable || '—') + ' → ' + (resp || '—'));
     if (est === 'RESERVADA' && est !== s.estado_actual && !ruta) fail('Indique la ruta para la que se reserva.');
-    var datos = cambios.filter(function (c) { return !/^metraje/.test(c); });
+    var datos = cambios.filter(function (c) { return !/^(metraje|saldo)/.test(c); });
     if (datos.length) {
-      var m = baseMov({ tipo: 'CAMBIO_DE_ESTADO', serie: k, fecha: today, documento: store.nextId('CS'), proyecto: ruta, departamento: ult.departamento || '',
+      var m = baseMov({ tipo: 'CAMBIO_DE_ESTADO', serie: k, fecha: today, documento: store.nextId('CS'), proyecto: ruta, departamento: dep, responsable: resp,
         observacion: 'CORRECCIÓN DE DATOS: ' + datos.join('; ') + '. Motivo: ' + motivo }, s);
       m.metraje = 0; m.signo = 0; m.codigo = cod; m.bodega_origen = bod; m.bodega_destino = bod; m.ubicacion = ubi; m.estado_resultante = est;
       m.regla_aplicada = 'CORRECCION_SERIE';

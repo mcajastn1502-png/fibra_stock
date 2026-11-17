@@ -207,6 +207,23 @@ ok('eliminar borra todo y deja respaldo en ELIMINADOS', () => { const rel = con.
   const resp = store.all('ELIMINADOS').filter(x => x.id_serie === nk);
   if (quedan || ser()(nk) || resp.length !== total || !JSON.parse(resp[0].datos)) throw new Error(JSON.stringify([quedan, resp.length, total]));
   return [r.borrados, resp.length + ' filas en ELIMINADOS']; });
+// ---- Modal de serie: saldo, departamento y responsable
+const sv = store.all('SERIES').find(s => s.estado_actual === 'DISPONIBLE' && +s.saldo_actual > 800 && +s.metraje_inicial > 0 && FS.BODEGAS.indexOf(s.bodega_actual) >= 0 && !s.id_serie.endsWith('-REN'));
+const ini2 = +sv.metraje_inicial, sal2 = +sv.saldo_actual;
+err('saldo negativo rechazado', () => con.editSeries({ serie: sv.id_serie, saldo: -5, motivo: 'x' }), /negativo|inválido/);
+ok('editar saldo: ajuste por la diferencia, metraje inicial igual', () => { const r = con.editSeries({ serie: sv.id_serie, saldo: sal2 - 100, motivo: 'Conteo' });
+  const x = ser()(sv.id_serie), mv = store.all('MOVIMIENTOS').filter(m => m.id_serie === sv.id_serie && m.regla_aplicada === 'CORRECCION_SALDO');
+  if (+x.saldo_actual !== sal2 - 100 || +x.metraje_inicial !== ini2 || mv.length !== 1 || mv[0].signo !== -1 || +mv[0].metraje !== 100) throw new Error(JSON.stringify([x.saldo_actual, x.metraje_inicial, mv.length])); return r.cambios; });
+ok('metraje inicial + saldo a la vez: el saldo final es el escrito', () => { con.editSeries({ serie: sv.id_serie, metraje_inicial: ini2 + 50, saldo: 777, motivo: 'Ambos' });
+  const x = ser()(sv.id_serie); if (+x.saldo_actual !== 777 || +x.metraje_inicial !== ini2 + 50) throw new Error([x.saldo_actual, x.metraje_inicial].join(' ')); return [x.metraje_inicial, x.saldo_actual]; });
+ok('saldo 0 → serie AGOTADA', () => { con.editSeries({ serie: sv.id_serie, saldo: 0, motivo: 'Se acabó' }); const x = ser()(sv.id_serie); if (+x.saldo_actual !== 0 || x.estado_actual !== 'AGOTADA') throw new Error([x.saldo_actual, x.estado_actual].join(' ')); return x.estado_actual; });
+ok('saldo de nuevo > 0 → vuelve a DISPONIBLE', () => { con.editSeries({ serie: sv.id_serie, saldo: 300, motivo: 'Apareció rollo' }); const x = ser()(sv.id_serie); if (x.estado_actual !== 'DISPONIBLE') throw new Error(x.estado_actual); return x.estado_actual; });
+ok('reservar con departamento y responsable', () => { con.editSeries({ serie: sv.id_serie, estado: 'RESERVADA', ruta: 'RUTA R2', departamento: 'PLANTA EXTERNA', responsable: 'Ana Ruiz', motivo: 'Reserva' });
+  const x = ser()(sv.id_serie), i = con.seriesEditInfo({ serie: sv.id_serie });
+  if (x.reservado_para !== 'RUTA R2 / PLANTA EXTERNA' || i.departamento !== 'PLANTA EXTERNA' || i.responsable !== 'ANA RUIZ') throw new Error(JSON.stringify([x.reservado_para, i.departamento, i.responsable])); return x.reservado_para; });
+ok('corregir metraje inicial no borra la reserva', () => { con.editSeries({ serie: sv.id_serie, metraje_inicial: ini2 + 60, motivo: 'Medición' }); con.correctInitialMeter({ serie: sv.id_serie, metraje_nuevo: ini2 + 70, motivo: 'Medición 2' });
+  const x = ser()(sv.id_serie); if (x.estado_actual !== 'RESERVADA' || x.reservado_para !== 'RUTA R2 / PLANTA EXTERNA') throw new Error([x.estado_actual, x.reservado_para].join(' | ')); return x.reservado_para; });
+ok('solo cambiar el responsable', () => { const r = con.editSeries({ serie: sv.id_serie, responsable: 'Luis Mora', motivo: 'Cambio de encargado' }); if (r.cambios.length !== 1 || !/responsable/.test(r.cambios[0])) throw new Error(JSON.stringify(r.cambios)); return r.cambios; });
 ok('lote: todas fallan → no registra nada', () => { const n = store.all('MOVIMIENTOS').length, r = bod.registerDispatchBatch({ ...comun, items: [{ serie: 'NOEXISTE-1', metraje: 5 }] });
   if (r.ok || r.registradas.length || store.all('MOVIMIENTOS').length !== n) throw new Error('registró'); return r.errores[0].error; });
 console.log(`\n${pass} correctas, ${failn} fallidas`);

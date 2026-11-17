@@ -415,6 +415,7 @@
   };
 
   /* ---- Editar / eliminar una serie (todos los usuarios, motivo obligatorio) ---- */
+  function U_round(x) { return Math.round(x * 100) / 100; }
   function editarSerie(id) {
     api('seriesEditInfo', { serie: id }).then(function (info) {
       var s = info.serie, c = BOOT.catalogos, ini = s.metraje_inicial === '' ? '' : +s.metraje_inicial;
@@ -423,17 +424,23 @@
         '<div class="note">Saldo actual <b class="num">' + m(s.saldo_actual) + '</b>. Los cambios quedan en el historial de la serie con su usuario y el motivo; el saldo se recalcula.</div>' +
         '<div class="form-grid">' + field('nueva_serie', 'Serie', 'text', { req: 1, value: s.id_serie, hint: 'Renombrar cambia la serie en todos sus registros.' }) +
         field('codigo', 'Código de artículo', 'text', { req: 1, value: s.codigo, list: 'dl-art' }) + field('descripcion_art', 'Descripción', 'text', { value: artDesc(s.codigo) || s.descripcion, wide: 1 }) +
-        field('metraje_inicial', 'Metraje inicial (m)', 'number', { value: ini, hint: 'La diferencia se registra como ajuste.' }) +
+        field('metraje_inicial', 'Metraje inicial (m)', 'number', { value: ini, hint: 'La diferencia se registra como ajuste; el saldo cambia igual.' }) +
+        field('saldo', 'Saldo (m)', 'number', { value: s.saldo_actual, hint: 'Se registra un ajuste por la diferencia; el metraje inicial no cambia.' }) +
         field('bodega', 'Bodega', 'select', { options: c.bodegas.indexOf(s.bodega_actual) >= 0 || !s.bodega_actual ? c.bodegas : [s.bodega_actual].concat(c.bodegas), value: s.bodega_actual }) +
         field('ubicacion', 'Ubicación', 'select', { options: c.ubicaciones, value: s.ubicacion_actual, empty: '—' }) +
         field('estado', 'Estado', 'select', { options: estados, value: s.estado_actual, empty: undefined }) +
         field('ruta', 'Ruta', 'text', { value: info.ruta, list: 'dl-ruta', wide: 1, hint: 'Se muestra en "Reservado para" cuando el estado es RESERVADA.' }) +
+        field('departamento', 'Departamento', 'text', { value: info.departamento, list: 'dl-dep' }) + field('responsable', 'Responsable', 'text', { value: info.responsable }) +
         field('motivo', 'Motivo del cambio', 'textarea', { req: 1, full: 1 }) + '</div>' +
         '<div class="note warn" style="margin-top:10px">Hasta el corte: si la serie viene de FIBRA QUITO 2026 y se cambia allá, la importación horaria puede volver a traer su nombre anterior.</div>' +
         '<div class="actions" style="justify-content:space-between"><button class="btn danger" id="del">Eliminar serie…</button><span class="row"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></span></div>' + datalists(),
       function (md, close) {
         var cod = md.querySelector('[name=codigo]'), desc = md.querySelector('[name=descripcion_art]'); desc.readOnly = true;
         cod.addEventListener('input', function () { desc.value = artDesc(cod.value); });
+        // Cambiar el metraje inicial mueve el saldo en la misma diferencia (mientras el saldo no se haya editado a mano)
+        var ini0 = ini === '' ? 0 : ini, sal = md.querySelector('[name=saldo]'), met = md.querySelector('[name=metraje_inicial]');
+        sal.addEventListener('input', function () { sal.dataset.mano = '1'; });
+        met.addEventListener('input', function () { if (!sal.dataset.mano) sal.value = U_round(+s.saldo_actual + ((+met.value || 0) - ini0)); });
         md.querySelector('#ok').onclick = function () {
           var d = formData(md), b = md.querySelector('#ok'); delete d.descripcion_art; d.serie = s.id_serie; busy(b, true);
           api('editSeries', d).then(function (r) { toast('Serie ' + r.serie.id_serie + ' actualizada: ' + r.cambios.join('; ') + '.', 'ok'); close(); route_(); })
@@ -483,6 +490,7 @@
   function tipoLbl(t) {
     if (t.regla_aplicada === 'CORRECCION_METRAJE_INICIAL') return 'Corrección de metraje inicial';
     if (t.regla_aplicada === 'CORRECCION_SERIE') return 'Corrección de datos de la serie';
+    if (t.regla_aplicada === 'CORRECCION_SALDO') return 'Corrección de saldo';
     return t.tipo === 'CAMBIO_DE_ESTADO' && t.origen === 'APP' ? 'Reservar' : TIPO_LBL[t.tipo] || t.tipo;
   }
   SCREENS.vida = async function (v, serie) {
