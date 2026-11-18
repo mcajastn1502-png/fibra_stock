@@ -167,8 +167,17 @@ function FS_importarValores_(ss, vals, url, accion, auto) {
   r.alertas.forEach(function (a) { a.id_alerta = store.nextId('ALE'); });
   var keepAlerts = store.all('ALERTAS').filter(function (a) { return manuales.some(function (m) { return m.id_movimiento === a.id_movimiento; }); });
   store.replace('MATRIZ_NORMALIZADA', r.staging);
-  var artsPrev = {}; store.all('ARTICULOS').forEach(function (a) { artsPrev[a.codigo] = a; });
-  store.replace('ARTICULOS', r.articulos.map(function (a) { return artsPrev[a.codigo] ? Object.assign({}, a, { stock_minimo: artsPrev[a.codigo].stock_minimo, fabricante: artsPrev[a.codigo].fabricante }) : a; }));
+  // Catálogo: lo editado o agregado en la app (origen APP) manda; los códigos renombrados o eliminados se traducen y no se recrean.
+  var mapa = FS.mapaReemplazos(store.all('ARTICULOS_REEMPLAZOS')), rc = function (c) { return mapa[c] || c; };
+  r.movimientos.forEach(function (m) { m.codigo = rc(m.codigo); });
+  r.staging.forEach(function (x) { x.codigo = rc(x.codigo); });
+  r.prestamos.forEach(function (x) { x.codigo = rc(x.codigo); });
+  var artsPrev = {}, artsApp = store.all('ARTICULOS').filter(function (a) { return a.origen === 'APP'; }), enApp = {};
+  store.all('ARTICULOS').forEach(function (a) { artsPrev[a.codigo] = a; });
+  artsApp.forEach(function (a) { enApp[a.codigo] = 1; });
+  store.replace('ARTICULOS', r.articulos.filter(function (a) { return !mapa.hasOwnProperty(a.codigo) && !enApp[a.codigo]; })
+    .map(function (a) { return artsPrev[a.codigo] ? Object.assign({}, a, { stock_minimo: artsPrev[a.codigo].stock_minimo, fabricante: artsPrev[a.codigo].fabricante }) : a; })
+    .concat(artsApp));
   store.replace('MOVIMIENTOS', r.movimientos.concat(manuales));
   store.replace('PRESTAMOS', r.prestamos.concat(store.all('PRESTAMOS').filter(function (p) { return p.origen === 'APP'; })));
   store.replace('SOBRANTES', r.sobrantes.concat(store.all('SOBRANTES').filter(function (p) { return p.origen === 'APP'; })));

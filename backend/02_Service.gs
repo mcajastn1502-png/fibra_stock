@@ -728,12 +728,61 @@ FS.Service = function (store, user) {
     if (!old) store.append('ABASTECIMIENTO_PARAM', [row]);
     log('PARAM_ABASTECIMIENTO', 'ABASTECIMIENTO_PARAM', r.familia, '', old, row); return { ok: true };
   };
+  /* ---------------- Catálogo de artículos (solo ADMIN: permiso 'catalogos') ----------------
+   * Lo editado o agregado aquí queda con origen APP y la importación de la matriz lo respeta.
+   * Renombrar o eliminar un código se anota en ARTICULOS_REEMPLAZOS: la importación traduce el código viejo que siga
+   * en la hoja y no vuelve a crear los eliminados. */
+  function usoCodigo(cod) {
+    return { series: store.all('SERIES').filter(function (x) { return x.codigo === cod; }).length,
+      movimientos: store.all('MOVIMIENTOS').filter(function (m) { return m.codigo === cod; }).length };
+  }
+  /** Cambia el código `a` por `b` en movimientos, préstamos y la matriz importada (una escritura por tabla). */
+  function reemplazarCodigo(a, b) {
+    ['MOVIMIENTOS', 'PRESTAMOS', 'MATRIZ_NORMALIZADA'].forEach(function (t) {
+      var rows = store.all(t); if (!rows.some(function (r) { return r.codigo === a; })) return;
+      store.replace(t, rows.map(function (r) { return r.codigo === a ? Object.assign({}, r, { codigo: b }) : r; }));
+    });
+  }
+  function anotarReemplazo(a, b, accion, motivo) {
+    store.append('ARTICULOS_REEMPLAZOS', [{ codigo: a, reemplazo: b || '', accion: accion, fecha: now, usuario: user.email, motivo: motivo || '' }]);
+  }
+  self.articleUsage = function (p) { need('catalogos'); return usoCodigo(U.key(p.codigo)); };
+
+  /** Crea o edita un artículo. Si cambia el código, lo renombra también en series, movimientos y préstamos. */
   self.saveArticle = function (p) {
-    need('catalogos'); var r = p.fila, cod = U.key(r.codigo); if (!cod) fail('Código obligatorio.');
+    need('catalogos'); var r = p.fila || {}, cod = U.key(r.codigo), orig = U.key(p.codigo_original || '');
+    if (!cod) fail('Código obligatorio.');
+    var arts = store.all('ARTICULOS'), existe = function (c) { return arts.some(function (a) { return a.codigo === c; }); };
+    if (orig && !existe(orig)) fail('El artículo ' + orig + ' ya no existe.');
+    if (cod !== orig && existe(cod)) fail('Ya existe el código ' + cod + '.' + (orig ? ' Para unificarlos, elimine ' + orig + ' e indique ' + cod + ' como reemplazo.' : ''));
     var fam = U.familiaCodigo(cod);
     var row = { id_articulo: 'ART-' + cod, codigo: cod, familia: fam.familia, prefijo_bodega: fam.prefijo, descripcion_original: U.str(r.descripcion), descripcion_normalizada: U.key(r.descripcion),
-      hilos: +r.hilos || U.hilosFromDesc(r.descripcion) || '', span: +r.span || U.spanFromDesc(r.descripcion) || '', tipo_cable: U.key(r.tipo_cable), fabricante: U.str(r.fabricante), unidad: 'm', stock_minimo: +r.stock_minimo || '', activo: r.activo === false ? 'NO' : 'SI' };
-    var old = store.update('ARTICULOS', 'codigo', cod, row); if (!old) store.append('ARTICULOS', [row]);
-    log('ARTICULO', 'ARTICULOS', cod, '', old, row); return { ok: true };
+      hilos: +r.hilos || U.hilosFromDesc(r.descripcion) || '', span: +r.span || U.spanFromDesc(r.descripcion) || '', tipo_cable: U.key(r.tipo_cable), fabricante: U.str(r.fabricante), unidad: 'm',
+      stock_minimo: +r.stock_minimo || '', activo: r.activo === false ? 'NO' : 'SI', origen: 'APP' };
+    var old = orig ? store.update('ARTICULOS', 'codigo', orig, row) : null;
+    if (!old) store.append('ARTICULOS', [row]);
+    if (orig && cod !== orig) { reemplazarCodigo(orig, cod); anotarReemplazo(orig, cod, 'RENOMBRAR', U.str(p.motivo)); self.recalc(); }
+    log(orig ? (cod !== orig ? 'RENOMBRAR_ARTICULO' : 'EDITAR_ARTICULO') : 'CREAR_ARTICULO', 'ARTICULOS', cod, '', old, row, orig && cod !== orig ? orig + ' → ' + cod : '');
+    return { ok: true, codigo: cod, renombrado: !!orig && cod !== orig };
+  };
+
+  /** Elimina un artículo. Si series o movimientos lo usan, exige un código de reemplazo y los pasa a ese código. */
+  self.deleteArticle = function (p) {
+    need('catalogos'); var cod = U.key(p.codigo), repl = U.key(p.reemplazo || ''), motivo = U.str(p.motivo).trim();
+    var arts = store.all('ARTICULOS');
+    if (!arts.some(function (a) { return a.codigo === cod; })) fail('El artículo ' + cod + ' no existe.');
+    if (!motivo) fail('Indique el motivo de la eliminación.');
+    var uso = usoCodigo(cod);
+    if ((uso.series || uso.movimientos) && !repl) fail('El código ' + cod + ' lo usan ' + uso.series + ' series y ' + uso.movimientos + ' movimientos: indique el código de reemplazo.');
+    if (repl) {
+      if (repl === cod) fail('El código de reemplazo debe ser distinto.');
+      if (!arts.some(function (a) { return a.codigo === repl; })) fail('El código de reemplazo ' + repl + ' no existe en el catálogo.');
+      reemplazarCodigo(cod, repl);
+    }
+    store.replace('ARTICULOS', arts.filter(function (a) { return a.codigo !== cod; }));
+    anotarReemplazo(cod, repl, 'ELIMINAR', motivo);
+    log('ELIMINAR_ARTICULO', 'ARTICULOS', cod, '', arts.filter(function (a) { return a.codigo === cod; })[0], repl ? 'reemplazo ' + repl : '', 'Motivo: ' + motivo + ' — ' + uso.series + ' series, ' + uso.movimientos + ' movimientos');
+    if (repl) self.recalc();
+    return { ok: true, uso: uso, reemplazo: repl };
   };
 };

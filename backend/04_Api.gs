@@ -7,13 +7,13 @@
 var FS_READ_ACTIONS = {
   bootstrap: 'bootstrap', dashboard: 'dashboard', inventory: 'inventory', searchSeries: 'searchSeries', rollLife: 'rollLife',
   alerts: 'alerts', loans: 'loans', surpluses: 'surpluses', report: 'report', projection: 'projection', audit: 'audit',
-  pendingApprovals: 'pendingApprovals', catalogs: 'catalogs', dispatchesOf: 'dispatchesOf', seriesInfo: 'seriesInfo', seriesEditInfo: 'seriesEditInfo'
+  pendingApprovals: 'pendingApprovals', catalogs: 'catalogs', dispatchesOf: 'dispatchesOf', seriesInfo: 'seriesInfo', seriesEditInfo: 'seriesEditInfo', articleUsage: 'articleUsage'
 };
 var FS_WRITE_ACTIONS = {
   registerMovement: 'registerMovement', correctInitialMeter: 'correctInitialMeter', editSeries: 'editSeries', deleteSeries: 'deleteSeries', registerDispatchBatch: 'registerDispatchBatch', registerReturnBatch: 'registerReturnBatch', registerOpeningBatch: 'registerOpeningBatch', registerReturn: 'registerReturn', registerLoan: 'registerLoan', returnLoan: 'returnLoan',
   setLoanState: 'setLoanState', registerSurplus: 'registerSurplus', confirmSurplus: 'confirmSurplus', transfer: 'transfer', cut: 'cut',
   approve: 'approve', annulMovement: 'annulMovement', updateAlert: 'updateAlert', linkFamily: 'linkFamily', saveCatalog: 'saveCatalog',
-  saveParam: 'saveParam', saveSupplyParam: 'saveSupplyParam', saveArticle: 'saveArticle', recalc: 'recalc'
+  saveParam: 'saveParam', saveSupplyParam: 'saveSupplyParam', saveArticle: 'saveArticle', deleteArticle: 'deleteArticle', recalc: 'recalc'
 };
 
 function doGet(e) {

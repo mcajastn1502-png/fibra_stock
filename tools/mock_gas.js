@@ -134,6 +134,21 @@ if(require.main===module){
     const claves=Object.keys(cache).filter(k=>k.startsWith('tbl_')); console.log('caché: sin USUARIOS ni BITACORA:', !claves.some(k=>/_(USUARIOS|BITACORA)(_|$)/.test(k)), '· trozos:', claves.length);
   }
   console.log('export',JSON.stringify(call('exportReport',{tipo:'inventario'},tk).data));
+  { // catálogo: lo editado en la app sobrevive a la reimportación; los códigos eliminados/renombrados se traducen
+    const arts=call('catalogs',{},tk).data.articulos, uso={}; call('inventory',{filtros:{}},tk).data.filas.forEach(x=>{uso[x.codigo]=(uso[x.codigo]||0)+1;});
+    const usados=arts.filter(a=>uso[a.codigo]).sort((x,y)=>uso[y.codigo]-uso[x.codigo]), ed=usados[1].codigo, del=usados[2].codigo, dest=usados[0].codigo, ren=usados[3].codigo;
+    call('saveArticle',{codigo_original:ed,fila:{codigo:ed,descripcion:'CORREGIDA EN APP'}},tk);
+    call('saveArticle',{codigo_original:ren,fila:{codigo:'ZZ-REN-01',descripcion:'RENOMBRADO'},motivo:'x'},tk);
+    call('saveArticle',{fila:{codigo:'ZZ-NUEVO-01',descripcion:'AGREGADO EN APP'}},tk);
+    const rd=call('deleteArticle',{codigo:del,reemplazo:dest,motivo:'no coincide'},tk);
+    g.importarMatriz(); const a2=call('catalogs',{},tk).data.articulos, inv=call('inventory',{filtros:{}},tk).data.filas, by=c=>a2.find(a=>a.codigo===c);
+    const ok=(c,m)=>console.log((c?'catálogo ok: ':'FALLO catálogo: ')+m);
+    ok(rd.ok, 'eliminar con reemplazo por la API');
+    ok(by(ed)&&by(ed).descripcion_original==='CORREGIDA EN APP', 'la descripción corregida sobrevive a la reimportación');
+    ok(!by(del)&&!inv.some(x=>x.codigo===del), 'el código eliminado no vuelve y sus series siguen con el reemplazo');
+    ok(!by(ren)&&by('ZZ-REN-01')&&!inv.some(x=>x.codigo===ren)&&inv.some(x=>x.codigo==='ZZ-REN-01'), 'el código renombrado se traduce al importar');
+    ok(!!by('ZZ-NUEVO-01'), 'el artículo agregado en la app no se pierde al importar');
+  }
   { // eliminar serie por la API: crea la hoja ELIMINADOS si no existe y deja el respaldo
     delete sheets.ELIMINADOS;
     const sx=call('inventory',{filtros:{estado:'DISPONIBLE'}},tb).data.filas.find(s=>s.saldo_actual>0), info=call('seriesEditInfo',{serie:sx.id_serie},tb).data.relacionados;

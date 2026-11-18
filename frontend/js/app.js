@@ -1012,8 +1012,50 @@
     } else if (catTab === 'PARAMETROS') {
       table(el, { rows: d.parametros, name: 'parametros', onRow: can('parametros') ? function (r) { modal('<h3>' + esc(r.clave) + '</h3><p class="hint">' + esc(r.descripcion) + '</p>' + field('valor', 'Valor', 'text', { value: r.valor }) + '<div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) { md.querySelector('#ok').onclick = function () { api('saveParam', { clave: r.clave, valor: formData(md).valor }).then(function () { toast('Parámetro guardado.', 'ok'); close(); BOOT = null; route_(); }).catch(function (x) { toast(x.message, 'err'); }); }; }); } : null, cols: [{ k: 'clave', l: 'Parámetro' }, { k: 'valor', l: 'Valor' }, { k: 'descripcion', l: 'Descripción' }] });
     } else {
-      var ed = function (r) { if (!can('catalogos')) return; r = r || {}; modal('<h3>Artículo</h3><div class="form-grid">' + field('codigo', 'Código', 'text', { value: r.codigo, req: 1 }) + field('descripcion', 'Descripción', 'text', { value: r.descripcion_original, full: 1 }) + field('hilos', 'Hilos', 'number', { value: r.hilos }) + field('span', 'Span', 'number', { value: r.span }) + field('tipo_cable', 'Tipo de cable', 'select', { options: ['ADSS', 'DUCTO', 'FIGURA 8', 'DROP', 'OTRO'], value: r.tipo_cable }) + field('fabricante', 'Fabricante', 'text', { value: r.fabricante }) + field('stock_minimo', 'Stock mínimo (m)', 'number', { value: r.stock_minimo }) + '</div><div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) { md.querySelector('#ok').onclick = function () { api('saveArticle', { fila: formData(md) }).then(function () { toast('Artículo guardado.', 'ok'); close(); BOOT = null; route_(); }).catch(function (x) { toast(x.message, 'err'); }); }; }); };
-      table(el, { rows: d.articulos, name: 'articulos', onRow: ed, cols: [{ k: 'codigo', l: 'Código' }, { k: 'familia', l: 'Familia' }, { k: 'prefijo_bodega', l: 'Prefijo' }, { k: 'descripcion_original', l: 'Descripción' }, { k: 'hilos', l: 'Hilos', n: 1 }, { k: 'span', l: 'Span', n: 1 }, { k: 'tipo_cable', l: 'Tipo' }, { k: 'stock_minimo', l: 'Mínimo', n: 1 }] });
+      // Editar (también el código, que se renombra en series y movimientos) o eliminar con código de reemplazo. Solo ADMIN.
+      var ed = function (r) {
+        if (!can('catalogos')) return; var nuevo = !r; r = r || {};
+        var tipos = ['ADSS', 'DUCTO', 'FIGURA 8', 'DROP', 'OTRO']; if (r.tipo_cable && tipos.indexOf(r.tipo_cable) < 0) tipos.unshift(r.tipo_cable);
+        modal('<h3>' + (nuevo ? 'Agregar artículo' : 'Editar artículo ' + esc(r.codigo)) + '</h3>' +
+          (nuevo ? '' : '<div class="note">Si cambia el código, se renombra también en todas las series, movimientos y préstamos que lo usan.</div>') +
+          '<div class="form-grid">' + field('codigo', 'Código', 'text', { value: r.codigo, req: 1 }) + field('descripcion', 'Descripción', 'text', { value: r.descripcion_original, full: 1 }) +
+          field('hilos', 'Hilos', 'number', { value: r.hilos }) + field('span', 'Span', 'number', { value: r.span }) + field('tipo_cable', 'Tipo de cable', 'select', { options: tipos, value: r.tipo_cable }) +
+          field('fabricante', 'Fabricante', 'text', { value: r.fabricante }) + field('stock_minimo', 'Stock mínimo (m)', 'number', { value: r.stock_minimo }) + '</div>' +
+          '<div class="actions" style="justify-content:space-between">' + (nuevo ? '<span></span>' : '<button class="btn danger" id="del">Eliminar artículo…</button>') +
+          '<span class="row"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></span></div>', function (md, close) {
+          md.querySelector('#ok').onclick = function () {
+            var b = md.querySelector('#ok'), d = formData(md); busy(b, true);
+            api('saveArticle', { codigo_original: r.codigo || '', fila: d }).then(function (x) {
+              toast(x.renombrado ? 'Código ' + r.codigo + ' renombrado a ' + x.codigo + ' en el catálogo, las series y los movimientos.' : 'Artículo guardado.', 'ok'); close(); BOOT = null; route_();
+            }).catch(function (x) { busy(b, false); toast(x.message, 'err'); });
+          };
+          var del = md.querySelector('#del'); if (del) del.onclick = function () { eliminarArticulo(r, close); };
+        });
+      };
+      var eliminarArticulo = function (r, cerrarEdicion) {
+        api('articleUsage', { codigo: r.codigo }).then(function (u) {
+          var usado = u.series || u.movimientos;
+          modal('<h3>Eliminar el artículo ' + esc(r.codigo) + '</h3>' +
+            (usado ? '<div class="note warn">Este código lo usan <b>' + u.series + '</b> series y <b>' + u.movimientos + '</b> movimientos. Indique el código correcto: todos pasarán a ese código y luego se eliminará ' + esc(r.codigo) + '.</div>'
+              : '<div class="note">Ninguna serie ni movimiento usa este código.</div>') +
+            '<div class="form-grid">' + (usado ? field('reemplazo', 'Código de reemplazo', 'text', { req: 1, list: 'dl-art' }) + field('reemplazo_desc', 'Descripción del reemplazo', 'text', { wide: 1 }) : '') +
+            field('motivo', 'Motivo', 'textarea', { req: 1, full: 1 }) + '</div>' +
+            '<div class="note" style="margin-top:10px">La importación desde FIBRA QUITO 2026 no volverá a crear este código: si aparece en la hoja, se traduce al de reemplazo.</div>' +
+            '<div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn danger" id="ok">Eliminar</button></div>' + datalists(), function (md, close) {
+            var rp = md.querySelector('[name=reemplazo]'), rd = md.querySelector('[name=reemplazo_desc]');
+            if (rp) { rd.readOnly = true; rp.addEventListener('input', function () { rd.value = artDesc(rp.value); }); }
+            md.querySelector('#ok').onclick = function () {
+              var b = md.querySelector('#ok'), d = formData(md); busy(b, true);
+              api('deleteArticle', { codigo: r.codigo, reemplazo: d.reemplazo || '', motivo: d.motivo }).then(function (x) {
+                toast('Artículo ' + r.codigo + ' eliminado' + (x.reemplazo ? '; sus series y movimientos pasaron a ' + x.reemplazo : '') + '.', 'ok'); close(); cerrarEdicion(); BOOT = null; route_();
+              }).catch(function (x) { busy(b, false); toast(x.message, 'err'); });
+            };
+          });
+        }).catch(function (x) { toast(x.message, 'err'); });
+      };
+      if (can('catalogos')) el.insertAdjacentHTML('beforebegin', '<p class="hint">Haga clic en un artículo para editarlo o eliminarlo. Lo editado aquí se respeta en las importaciones de la matriz.</p>');
+      table(el, { rows: d.articulos, name: 'articulos', onRow: ed, cols: [{ k: 'codigo', l: 'Código' }, { k: 'familia', l: 'Familia' }, { k: 'prefijo_bodega', l: 'Prefijo' }, { k: 'descripcion_original', l: 'Descripción' }, { k: 'hilos', l: 'Hilos', n: 1 }, { k: 'span', l: 'Span', n: 1 }, { k: 'tipo_cable', l: 'Tipo' }, { k: 'stock_minimo', l: 'Mínimo', n: 1 },
+        { k: 'origen', l: 'Origen', f: function (x) { return x === 'APP' ? '<span class="pill">Editado en la app</span>' : '<span class="hint">Matriz</span>'; } }] });
       var a2 = document.getElementById('add'); if (a2) a2.onclick = function () { ed(); };
     }
   };

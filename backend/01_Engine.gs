@@ -513,6 +513,21 @@ FS.isMovVigente = function (m) {
   return m.estado_registro !== 'ANULADO' && (m.aprobacion === 'NO_REQUIERE' || m.aprobacion === 'APROBADO' || !m.aprobacion);
 };
 
+/**
+ * Reemplazos de códigos del catálogo → { codigo_viejo: codigo_final } ('' = eliminado sin reemplazo).
+ * Sigue las cadenas (A→B y luego B→C da A→C).
+ */
+FS.mapaReemplazos = function (filas) {
+  var directo = {}, out = {};
+  (filas || []).forEach(function (r) { if (r.codigo) directo[r.codigo] = r.reemplazo || ''; });
+  Object.keys(directo).forEach(function (c) {
+    var x = directo[c], n = 0;
+    while (x && directo.hasOwnProperty(x) && directo[x] && n++ < 20) x = directo[x];
+    out[c] = x;
+  });
+  return out;
+};
+
 /** Calcula la tabla SERIES desde MOVIMIENTOS (fuente única de verdad). */
 FS.computeSeries = function (data) {
   var U = FS.util, art = {}, rel = {}, openAlerts = {}, loansOpen = {};

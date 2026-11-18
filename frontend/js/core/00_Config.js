@@ -21,7 +21,9 @@ FS.SCHEMA = {
     'clase_contratista', 'certificacion_original', 'certificado_por', 'fecha_certificacion', 'observacion',
     'clasificacion_repeticion', 'riesgo_duplicado', 'movimientos_generados'],
   ARTICULOS: ['id_articulo', 'codigo', 'familia', 'prefijo_bodega', 'descripcion_original', 'descripcion_normalizada',
-    'hilos', 'span', 'tipo_cable', 'fabricante', 'unidad', 'stock_minimo', 'activo'],
+    'hilos', 'span', 'tipo_cable', 'fabricante', 'unidad', 'stock_minimo', 'activo', 'origen'],
+  /** Códigos renombrados o eliminados en el catálogo: la importación traduce el código viejo y no lo recrea. */
+  ARTICULOS_REEMPLAZOS: ['codigo', 'reemplazo', 'accion', 'fecha', 'usuario', 'motivo'],
   SERIES: ['id_serie', 'serie_original', 'serie_normalizada', 'serie_madre', 'codigo', 'familia', 'descripcion', 'hilos',
     'span', 'metraje_inicial', 'total_ingresado', 'total_despachado', 'total_devuelto', 'total_prestado',
     'total_dev_prestamo', 'total_baja', 'total_corte', 'total_ajuste', 'consumo_calculado', 'saldo_actual',
