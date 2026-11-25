@@ -11,6 +11,7 @@ FS.Service = function (store, user) {
   var U = FS.util, self = this;
   var today = store.today(), now = store.now();
   var params = store.params();
+  FS.aplicarBodegas(store.all('BODEGAS')); // bodegas de fábrica + las creadas en la app
 
   function can(perm) { return (FS.ROLES[user.rol] || []).indexOf(perm) >= 0; }
   function need(perm) { if (!can(perm)) throw new Error('Permiso denegado: su rol (' + user.rol + ') no permite esta acción.'); }
@@ -68,7 +69,8 @@ FS.Service = function (store, user) {
       user: { email: user.email, nombre: user.nombre, usuario: user.usuario || '', rol: user.rol, permisos: FS.ROLES[user.rol] || [], debe_cambiar: !!user.debe_cambiar },
       hoy: today, version: FS.VERSION, params: params,
       catalogos: {
-        estados: FS.ESTADOS, bodegas: FS.BODEGAS, ubicaciones: FS.UBICACIONES, tipos_movimiento: Object.keys(FS.TIPOS_MOV),
+        estados: FS.ESTADOS, bodegas: FS.BODEGAS, bodegas_info: store.all('BODEGAS').filter(function (b) { return String(b.activo).toUpperCase() !== 'NO'; }),
+        ubicaciones: FS.UBICACIONES, tipos_movimiento: Object.keys(FS.TIPOS_MOV),
         departamentos: vals('DEPARTAMENTO'), contratistas: vals('CONTRATISTA'), estados_prestamo: FS.ESTADOS_PRESTAMO,
         hilos: FS.HILOS_STD, tipos_alerta: Object.keys(FS.ALERTAS),
         rutas: (function () { var o = {}; store.all('MOVIMIENTOS').forEach(function (x) { var r = U.str(x.proyecto_ruta).trim(); if (r && FS.isMovVigente(x)) o[r] = 1; }); return Object.keys(o).sort(); })(),
@@ -627,6 +629,21 @@ FS.Service = function (store, user) {
     if (desp) { m.departamento = desp.departamento; m.contratista = desp.contratista; }
     store.update('SOBRANTES', 'id_sobrante', r.id_sobrante, { estado: 'RECIBIDO', metraje_devuelto: dev, fecha_devolucion: m.fecha, condicion: U.key(p.condicion), bodega_receptora: m.bodega_destino, confirmado_por: user.email });
     return save([m], 'RECIBIR_SOBRANTE');
+  };
+
+  /** Crea una bodega (Transferencias › + Nueva bodega). Quien registra traslados puede crearla. */
+  self.createWarehouse = function (p) {
+    need('registrar');
+    var cod = U.key(p.codigo).replace(/\s+/g, ''), nombre = U.str(p.nombre).trim(), ciudad = U.str(p.ciudad).trim();
+    if (!/^[A-Z0-9_-]{2,12}$/.test(cod)) fail('Código de bodega inválido: use de 2 a 12 letras o números, sin espacios (p. ej. BQGYE).');
+    if (!nombre) fail('Indique el nombre de la bodega.');
+    if (!ciudad) fail('Indique la ciudad de la bodega.');
+    if (FS.BODEGAS.indexOf(cod) >= 0 || store.all('BODEGAS').some(function (b) { return U.key(b.codigo) === cod; })) fail('La bodega ' + cod + ' ya existe.');
+    var row = { codigo: cod, nombre: nombre, ciudad: ciudad, activo: 'SI', creado_por: user.email, creado_en: now };
+    store.append('BODEGAS', [row]);
+    log('CREAR_BODEGA', 'BODEGAS', cod, '', '', row, nombre + ' (' + ciudad + ')');
+    FS.aplicarBodegas(store.all('BODEGAS'));
+    return { ok: true, bodega: row, bodegas: FS.BODEGAS };
   };
 
   self.transfer = function (p) {

@@ -513,6 +513,14 @@ FS.isMovVigente = function (m) {
   return m.estado_registro !== 'ANULADO' && (m.aprobacion === 'NO_REQUIERE' || m.aprobacion === 'APROBADO' || !m.aprobacion);
 };
 
+/** Agrega a FS.BODEGAS las bodegas activas de la tabla BODEGAS (las de fábrica siempre están). */
+FS.aplicarBodegas = function (filas) {
+  var out = FS.BODEGAS_BASE.slice();
+  (filas || []).forEach(function (b) { var c = String(b.codigo || '').trim(); if (c && String(b.activo).toUpperCase() !== 'NO' && out.indexOf(c) < 0) out.push(c); });
+  FS.BODEGAS = out;
+  return out;
+};
+
 /**
  * Reemplazos de códigos del catálogo → { codigo_viejo: codigo_final } ('' = eliminado sin reemplazo).
  * Sigue las cadenas (A→B y luego B→C da A→C).

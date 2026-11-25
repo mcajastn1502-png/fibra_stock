@@ -250,6 +250,21 @@ ok('eliminar código sin uso', () => { adm.saveArticle({ fila: { codigo: 'ZZ-SIN
   if (store.all('ARTICULOS').some(a => a.codigo === 'ZZ-SIN-USO')) throw new Error('sigue'); return r.uso; });
 ok('mapa de reemplazos sigue cadenas', () => { const m = FS.mapaReemplazos([{ codigo: 'A', reemplazo: 'B' }, { codigo: 'B', reemplazo: 'C' }, { codigo: 'D', reemplazo: '' }]);
   if (m.A !== 'C' || m.B !== 'C' || m.D !== '' || !m.hasOwnProperty('D')) throw new Error(JSON.stringify(m)); return m; });
+// ---- Bodegas nuevas desde Transferencias (quien registra traslados)
+err('ANALISTA no crea bodegas', () => ana.createWarehouse({ codigo: 'BQGYE', nombre: 'Guayaquil', ciudad: 'Guayaquil' }), /Permiso/);
+err('código inválido', () => bod.createWarehouse({ codigo: 'BQ GYE NORTE 123', nombre: 'x', ciudad: 'y' }), /inválido/);
+err('sin ciudad', () => bod.createWarehouse({ codigo: 'BQGYE', nombre: 'Guayaquil' }), /ciudad/);
+err('bodega de fábrica repetida', () => bod.createWarehouse({ codigo: 'bqus', nombre: 'x', ciudad: 'Quito' }), /ya existe/);
+ok('BODEGA crea BQGYE', () => { const r = bod.createWarehouse({ codigo: 'bqgye', nombre: 'Bodega Guayaquil Norte', ciudad: 'Guayaquil' });
+  if (r.bodega.codigo !== 'BQGYE' || r.bodegas.indexOf('BQGYE') < 0) throw new Error(JSON.stringify(r)); return r.bodegas; });
+err('crearla de nuevo', () => bod.createWarehouse({ codigo: 'BQGYE', nombre: 'x', ciudad: 'y' }), /ya existe/);
+ok('otro usuario la ve en bootstrap con nombre y ciudad', () => { const b = U('CONSULTA', 'otro@telconet.ec').bootstrap().catalogos;
+  const i = b.bodegas_info.find(x => x.codigo === 'BQGYE'); if (b.bodegas.indexOf('BQGYE') < 0 || !i || i.ciudad !== 'Guayaquil') throw new Error(JSON.stringify(b.bodegas)); return b.bodegas; });
+const st2 = store.all('SERIES').find(s => s.estado_actual === 'DISPONIBLE' && +s.saldo_actual > 300 && FS.BODEGAS_BASE.indexOf(s.bodega_actual) >= 0 && !/-REN$/.test(s.id_serie));
+ok('trasladar a la bodega nueva', () => { const r = bod.transfer({ serie: st2.id_serie, bodega_destino: 'BQGYE', documento: 'TR-GYE-1', fecha: '2026-10-13' });
+  if (r.serie.bodega_actual !== 'BQGYE') throw new Error(r.serie.bodega_actual); return r.serie.bodega_actual; });
+ok('despachar desde la bodega nueva', () => { const r = bod.registerDispatchBatch({ fecha: '2026-10-13', departamento: 'PLANTA EXTERNA', proyecto: 'RUTA GYE', items: [{ serie: st2.id_serie, metraje: 50, bodega: 'BQGYE' }] });
+  if (r.registradas.length !== 1) throw new Error(JSON.stringify(r.errores)); return r.registradas[0].saldo_actual; });
 ok('lote: todas fallan → no registra nada', () => { const n = store.all('MOVIMIENTOS').length, r = bod.registerDispatchBatch({ ...comun, items: [{ serie: 'NOEXISTE-1', metraje: 5 }] });
   if (r.ok || r.registradas.length || store.all('MOVIMIENTOS').length !== n) throw new Error('registró'); return r.errores[0].error; });
 console.log(`\n${pass} correctas, ${failn} fallidas`);

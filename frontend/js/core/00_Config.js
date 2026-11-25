@@ -24,6 +24,8 @@ FS.SCHEMA = {
     'hilos', 'span', 'tipo_cable', 'fabricante', 'unidad', 'stock_minimo', 'activo', 'origen'],
   /** Códigos renombrados o eliminados en el catálogo: la importación traduce el código viejo y no lo recrea. */
   ARTICULOS_REEMPLAZOS: ['codigo', 'reemplazo', 'accion', 'fecha', 'usuario', 'motivo'],
+  /** Bodegas creadas desde la app (p. ej. al trasladar a una bodega nueva). */
+  BODEGAS: ['codigo', 'nombre', 'ciudad', 'activo', 'creado_por', 'creado_en'],
   SERIES: ['id_serie', 'serie_original', 'serie_normalizada', 'serie_madre', 'codigo', 'familia', 'descripcion', 'hilos',
     'span', 'metraje_inicial', 'total_ingresado', 'total_despachado', 'total_devuelto', 'total_prestado',
     'total_dev_prestamo', 'total_baja', 'total_corte', 'total_ajuste', 'consumo_calculado', 'saldo_actual',
@@ -90,7 +92,9 @@ FS.TIPOS_MOV = {
 
 FS.ESTADOS = ['DISPONIBLE', 'DESPACHADA', 'PRESTADA', 'RESERVADA', 'DEVUELTA', 'MAL_ESTADO', 'BAJA', 'EN_REVISION',
   'TRASLADADA', 'AGOTADA'];
-FS.BODEGAS = ['BQUS', 'BQEF', 'BQZ3'];
+/** Bodegas de fábrica; las creadas en la app (tabla BODEGAS) se agregan con FS.aplicarBodegas. */
+FS.BODEGAS_BASE = ['BQUS', 'BQEF', 'BQZ3'];
+FS.BODEGAS = FS.BODEGAS_BASE.slice();
 FS.UBICACIONES = ['EXT 02 BODEGA', 'EXT 03 BODEGA', 'SAN FERNANDO'];
 FS.ESTADOS_PRESTAMO = ['ACTIVO', 'DEVUELTO_COMPLETO', 'DEVUELTO_PARCIAL', 'VENCIDO', 'PENDIENTE_DE_REVISION',
   'PERDIDO', 'CONSUMIDO_EN_OBRA'];

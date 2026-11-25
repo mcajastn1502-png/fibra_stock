@@ -913,14 +913,45 @@
   };
 
   /* ============================ 9. traslado ============================ */
+  /* ---- Bodegas: las de fábrica + las creadas en la app (con nombre y ciudad) ---- */
+  function bodegaLbl(code) {
+    var b = (BOOT.catalogos.bodegas_info || []).filter(function (x) { return x.codigo === code; })[0];
+    return b ? code + ' — ' + b.nombre + ' (' + b.ciudad + ')' : code;
+  }
+  function bodegaDestinoField() {
+    return '<div class="f"><label for="bd-sel">Bodega destino <span class="req">*</span></label><div class="row pw-row">' +
+      '<select id="bd-sel" name="bodega_destino" style="flex:1;min-width:0">' + opt(BOOT.catalogos.bodegas.map(function (b) { return { v: b, l: bodegaLbl(b) }; }), '', '— seleccione —') + '</select>' +
+      (can('registrar') ? '<button type="button" class="btn sm" id="bd-new" title="Crear una bodega de destino nueva">+ Nueva bodega</button>' : '') + '</div></div>';
+  }
+  function bindNuevaBodega(root) {
+    var b = root.querySelector('#bd-new'); if (!b) return;
+    b.onclick = function () {
+      var ciudades = {}; (BOOT.catalogos.bodegas_info || []).forEach(function (x) { if (x.ciudad) ciudades[x.ciudad] = 1; }); ciudades.Quito = 1;
+      modal('<h3>Nueva bodega de destino</h3><div class="form-grid">' +
+        field('ciudad', 'Ciudad', 'text', { req: 1, list: 'dl-ciudad' }) + field('codigo', 'Bodega', 'text', { req: 1, ph: 'Ej.: BQGYE', hint: 'Código corto: letras y números, sin espacios.' }) +
+        field('nombre', 'Nombre bodega', 'text', { req: 1, wide: 1, ph: 'Ej.: Bodega Guayaquil Norte' }) + '</div>' +
+        '<datalist id="dl-ciudad">' + Object.keys(ciudades).sort().map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist>' +
+        '<div class="actions"><button class="btn" data-close>Cancelar</button><button class="btn pri" id="ok">Guardar</button></div>', function (md, close) {
+        md.querySelector('[name=ciudad]').focus();
+        md.querySelector('#ok').onclick = function () {
+          var d = formData(md), ok = md.querySelector('#ok'); busy(ok, true);
+          api('createWarehouse', d).then(function (r) {
+            BOOT.catalogos.bodegas = r.bodegas; (BOOT.catalogos.bodegas_info = BOOT.catalogos.bodegas_info || []).push(r.bodega);
+            var sel = root.querySelector('#bd-sel'); sel.innerHTML = opt(r.bodegas.map(function (x) { return { v: x, l: bodegaLbl(x) }; }), r.bodega.codigo, '— seleccione —');
+            toast('Bodega ' + r.bodega.codigo + ' creada y seleccionada como destino.', 'ok'); close();
+          }).catch(function (x) { busy(ok, false); toast(x.message, 'err'); });
+        };
+      });
+    };
+  }
   SCREENS.traslado = async function (v, serie) {
     var c = BOOT.catalogos;
     v.innerHTML = '<div class="card"><h3>Trasladar entre bodegas</h3><div class="note">Se traslada el saldo completo de la serie. El saldo de la serie no cambia; cambia su bodega actual.</div><form id="tf"><div class="form-grid"><div id="sp" class="full"></div>' +
       field('documento_generado', 'Documento generado', 'text', { value: 'TR-001', readonly: 1, hint: 'Generado automáticamente por el sistema.' }) +
       codigoFields(false) +
-      field('bodega_destino', 'Bodega destino', 'select', { options: c.bodegas, req: 1 }) + field('ubicacion', 'Ubicación destino', 'select', { options: c.ubicaciones, empty: '—' }) + field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
+      bodegaDestinoField() + field('ubicacion', 'Ubicación destino', 'select', { options: c.ubicaciones, empty: '—' }) + field('fecha', 'Fecha', 'date', { value: todayISO(), max: todayISO(), req: 1 }) +
       field('documento', 'Documento de traslado', 'text', { req: 1 }) + field('responsable', 'Responsable del transporte', 'text') + field('observacion', 'Observaciones', 'textarea', { full: 1 }) + '</div><div class="actions"><button class="btn pri" type="submit">Trasladar</button></div></form></div>';
-    var tf = v.querySelector('#tf'); bindCodigoFields(tf, false);
+    var tf = v.querySelector('#tf'); bindCodigoFields(tf, false); bindNuevaBodega(tf);
     seriePicker(v.querySelector('#sp'), function (s) { setCodigo(tf, s); }, serie);
     v.querySelector('#tf').onsubmit = function (e) { e.preventDefault(); var d = formData(e.target), b = e.target.querySelector('[type=submit]'); busy(b, true); api('transfer', d).then(function (r) { toast('Traslado registrado. Ahora en ' + r.serie.bodega_actual, 'ok'); location.hash = '#vida/' + encodeURIComponent(r.serie.id_serie); }).catch(function (x) { busy(b, false); toast(x.message, 'err'); }); };
   };

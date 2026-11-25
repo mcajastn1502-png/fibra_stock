@@ -149,6 +149,14 @@ if(require.main===module){
     ok(!by(ren)&&by('ZZ-REN-01')&&!inv.some(x=>x.codigo===ren)&&inv.some(x=>x.codigo==='ZZ-REN-01'), 'el código renombrado se traduce al importar');
     ok(!!by('ZZ-NUEVO-01'), 'el artículo agregado en la app no se pierde al importar');
   }
+  { // bodega nueva por la API: crea la hoja BODEGAS y una petición posterior la reconoce (otro proceso → se lee de la hoja)
+    delete sheets.BODEGAS; const r=call('createWarehouse',{codigo:'BQGYE',nombre:'Guayaquil Norte',ciudad:'Guayaquil'},tb);
+    g.FS.BODEGAS=g.FS.BODEGAS_BASE.slice(); // simula una ejecución nueva de Apps Script
+    const bs=call('bootstrap',{},tb).data.catalogos, sx=call('inventory',{filtros:{estado:'DISPONIBLE'}},tb).data.filas.find(s=>s.saldo_actual>0 && g.FS.BODEGAS_BASE.indexOf(s.bodega_actual)>=0);
+    g.FS.BODEGAS=g.FS.BODEGAS_BASE.slice();
+    const t=call('transfer',{serie:sx.id_serie,bodega_destino:'BQGYE',documento:'TR-1'},tb);
+    console.log((r.ok && sheets.BODEGAS && bs.bodegas.indexOf('BQGYE')>=0 && t.ok && t.data.serie.bodega_actual==='BQGYE' ? 'bodega ok: ' : 'FALLO bodega: ')+'hoja BODEGAS creada, bootstrap la incluye y el traslado funciona en otra ejecución');
+  }
   { // eliminar serie por la API: crea la hoja ELIMINADOS si no existe y deja el respaldo
     delete sheets.ELIMINADOS;
     const sx=call('inventory',{filtros:{estado:'DISPONIBLE'}},tb).data.filas.find(s=>s.saldo_actual>0), info=call('seriesEditInfo',{serie:sx.id_serie},tb).data.relacionados;
